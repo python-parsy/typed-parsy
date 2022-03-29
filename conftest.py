@@ -1,6 +1,6 @@
 import sys
 
-collect_ignore = []
+collect_ignore: list[str] = []
 
 if sys.version_info < (3, 7):
     # Python 3.6 and below don't have `dataclasses`

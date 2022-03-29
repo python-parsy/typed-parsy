@@ -13,7 +13,7 @@ import enum
 from dataclasses import dataclass
 from typing import List, Optional, Union
 
-from parsy import from_enum, regex, seq, string
+from parsy import from_enum, regex, string
 
 # -- AST nodes:
 
@@ -83,26 +83,20 @@ column_expr = field | string_literal | number_literal
 
 operator = from_enum(Operator)
 
-comparison = seq(
-    left=column_expr << padding,
-    operator=operator,
-    right=padding >> column_expr,
-).combine_dict(Comparison)
+
+comparison = ((column_expr << padding) & operator & (padding >> column_expr)).map(
+    lambda t: Comparison(t[0][0], t[0][1], t[1])
+)
 
 SELECT = string("SELECT")
 FROM = string("FROM")
 WHERE = string("WHERE")
 
-# Here we demonstrate use of leading underscore to discard parts we don't want,
-# which is more readable and convenient than `<<` and `>>` sometimes.
-select = seq(
-    _select=SELECT + space,
-    columns=column_expr.sep_by(padding + string(",") + padding, min=1),
-    _from=space + FROM + space,
-    table=table,
-    where=(space >> WHERE >> space >> comparison).optional(),
-    _end=padding + string(";"),
-).combine_dict(Select)
+select = (
+    ((SELECT + space) >> (column_expr.sep_by(padding + string(",") + padding, min=1)) << (space + FROM + space))
+    & table
+    & ((space >> WHERE >> space >> comparison).optional() << (padding + string(";")))
+).map(lambda t: Select(t[0][0], t[0][1], t[1]))
 
 
 # Run these tests with pytest:

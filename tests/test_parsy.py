@@ -10,7 +10,6 @@ from datetime import date
 
 from parsy import (
     ParseError,
-    alt,
     any_char,
     char_from,
     decimal_digit,
@@ -25,7 +24,6 @@ from parsy import (
     match_item,
     peek,
     regex,
-    seq,
     string,
     string_from,
 )
@@ -118,47 +116,14 @@ class TestParser(unittest.TestCase):
         parser = digit.map(int)
         self.assertEqual(parser.parse("7"), 7)
 
-    def test_combine(self):
-        parser = seq(digit, letter).combine(lambda d, l: (d, l))
+    def test_and(self):
+        parser = digit & letter
         self.assertEqual(parser.parse("1A"), ("1", "A"))
 
-    def test_combine_dict(self):
-        ddmmyyyy = (
-            seq(
-                regex(r"[0-9]{2}").map(int).tag("day"),
-                regex(r"[0-9]{2}").map(int).tag("month"),
-                regex(r"[0-9]{4}").map(int).tag("year"),
-            )
-            .map(dict)
-            .combine_dict(date)
-        )
-        self.assertEqual(ddmmyyyy.parse("05042003"), date(2003, 4, 5))
-
-    def test_combine_dict_list(self):
-        Pair = namedtuple("Pair", ["word", "number"])
-        parser = seq(
-            regex(r"[A-Z]+").tag("word"),
-            regex(r"[0-9]+").map(int).tag("number"),
-        ).combine_dict(Pair)
-        self.assertEqual(parser.parse("ABC123"), Pair(word="ABC", number=123))
-
-    def test_combine_dict_skip_None(self):
-        Pair = namedtuple("Pair", ["word", "number"])
-        parser = seq(
-            regex(r"[A-Z]+").tag("word"),
-            whitespace.tag(None),
-            regex(r"[0-9]+").map(int).tag("number"),
-        ).combine_dict(Pair)
-        self.assertEqual(parser.parse("ABC   123"), Pair(word="ABC", number=123))
-
-    def test_combine_dict_skip_underscores(self):
-        Pair = namedtuple("Pair", ["word", "number"])
-        parser = seq(
-            regex(r"[A-Z]+").tag("word"),
-            whitespace.tag("_whitespace"),
-            regex(r"[0-9]+").map(int).tag("number"),
-        ).combine_dict(Pair)
-        self.assertEqual(parser.parse("ABC   123"), Pair(word="ABC", number=123))
+    def test_or(self):
+        self.assertEqual((letter | digit).parse("a"), "a")
+        self.assertEqual((letter | digit).parse("1"), "1")
+        self.assertRaises(ParseError, (letter | digit).parse, ".")
 
     def test_concat(self):
         parser = letter.many().concat()
@@ -211,43 +176,6 @@ class TestParser(unittest.TestCase):
             parser.sep_by(string(",")).parse("this,is,a,list"),
             [("word", "this"), ("word", "is"), ("word", "a"), ("word", "list")],
         )
-
-    def test_tag_map_dict(self):
-        parser = seq(letter.tag("first_letter"), letter.many().concat().tag("remainder")).map(dict)
-        self.assertEqual(parser.parse("Hello"), {"first_letter": "H", "remainder": "ello"})
-
-    def test_generate_desc(self):
-        @generate("a thing")
-        def thing():
-            yield string("t")
-
-        with self.assertRaises(ParseError) as err:
-            thing.parse("x")
-
-        ex = err.exception
-
-        self.assertEqual(ex.expected, frozenset(["a thing"]))
-        self.assertEqual(ex.stream, "x")
-        self.assertEqual(ex.index, 0)
-
-    def test_generate_default_desc(self):
-        # We shouldn't give a default desc, the messages from the internal
-        # parsers should bubble up.
-        @generate
-        def thing():
-            yield string("a")
-            yield string("b")
-
-        with self.assertRaises(ParseError) as err:
-            thing.parse("ax")
-
-        ex = err.exception
-
-        self.assertEqual(ex.expected, frozenset(["b"]))
-        self.assertEqual(ex.stream, "ax")
-        self.assertEqual(ex.index, 1)
-
-        self.assertIn("expected 'b' at 0:1", str(ex))
 
     def test_multiple_failures(self):
         abc = string("a") | string("b") | string("c")
@@ -353,12 +281,10 @@ class TestParser(unittest.TestCase):
 
         s = "ssssx"
         self.assertEqual(until.parse_partial(s), (4 * ["s"], "x"))
-        self.assertEqual(seq(until, string("x")).parse(s), [4 * ["s"], "x"])
         self.assertEqual(until.then(string("x")).parse(s), "x")
 
         s = "ssssxy"
         self.assertEqual(until.parse_partial(s), (4 * ["s"], "xy"))
-        self.assertEqual(seq(until, string("x")).parse_partial(s), ([4 * ["s"], "x"], "y"))
         self.assertEqual(until.then(string("x")).parse_partial(s), ("x", "y"))
 
         self.assertRaises(ParseError, until.parse, "ssssy")
@@ -462,29 +388,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, (letter * range(1, 2)).parse, "aa")
 
     # Primitives
-    def test_alt(self):
-        self.assertRaises(ParseError, alt().parse, "")
-        self.assertEqual(alt(letter, digit).parse("a"), "a")
-        self.assertEqual(alt(letter, digit).parse("1"), "1")
-        self.assertRaises(ParseError, alt(letter, digit).parse, ".")
-
-    def test_seq(self):
-        self.assertEqual(seq().parse(""), [])
-        self.assertEqual(seq(letter).parse("a"), ["a"])
-        self.assertEqual(seq(letter, digit).parse("a1"), ["a", "1"])
-        self.assertRaises(ParseError, seq(letter, digit).parse, "1a")
-
-    def test_seq_kwargs(self):
-        self.assertEqual(
-            seq(first_name=regex(r"\S+") << whitespace, last_name=regex(r"\S+")).parse("Jane Smith"),
-            {"first_name": "Jane", "last_name": "Smith"},
-        )
-
-    def test_seq_kwargs_fail(self):
-        self.assertRaises(ParseError, seq(a=string("a")).parse, "b")
-
-    def test_seq_kwargs_error(self):
-        self.assertRaises(ValueError, lambda: seq(string("a"), b=string("b")))
 
     def test_test_char(self):
         ascii = parsy_test_char(lambda c: ord(c) < 128, "ascii character")

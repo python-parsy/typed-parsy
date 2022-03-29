@@ -1,8 +1,15 @@
-from parsy import forward_declaration, regex, seq, string
+from typing import TypeVar
+from parsy import Parser, forward_declaration, regex, string
 
 # Utilities
 whitespace = regex(r"\s*")
-lexeme = lambda p: p << whitespace
+
+T = TypeVar("T")
+
+
+def lexeme(p: Parser[T]) -> Parser[T]:
+    return p << whitespace
+
 
 # Punctuation
 lbrace = lexeme(string("{"))
@@ -33,7 +40,7 @@ quoted = lexeme(string('"') >> (string_part | string_esc).many().concat() << str
 
 # Data structures
 json_value = forward_declaration()
-object_pair = seq(quoted << colon, json_value).map(tuple)
+object_pair = (quoted << colon) & json_value
 json_object = lbrace >> object_pair.sep_by(comma).map(dict) << rbrace
 array = lbrack >> json_value.sep_by(comma) << rbrack
 

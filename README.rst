@@ -3,6 +3,27 @@ parsy
 
 |Documentation Status| |Build Status| |Codecov| |Downloads|
 
+Typed Parsy
+-----------
+
+**NOTE:** This repo is an **experimental** attempt to create a **backwards
+incompatible** version of parsy that has strong type guarantees, with no
+``Any`` slipping in to spoil things.
+
+This means removing anything that cannot be typed fully, and providing
+alternatives. Main changes:
+
+* Removed ``seq``, and replaced it with ``&`` operator support which returns a 2-tuple
+* Removed ``alt`` - you can use only ``|`` operator.
+* Removed ``.combine`` and ``.combine_dict`` - you have to use ``.map`` instead,
+  which is type-safe but much trickier, especially once you have nested tuples.
+
+The docs have not been updated, you’ll need to look at the source code
+if you are interested.
+
+
+----
+
 Parsy is an easy and elegant way to parse text in Python by combining small
 parsers into complex, larger parsers. If it means anything to you, it's a
 monadic parser combinator library for LL(infinity) grammars in the spirit of

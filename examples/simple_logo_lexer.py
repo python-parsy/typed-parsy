@@ -8,22 +8,17 @@ Stripped down logo lexer, for tokenizing Turtle Logo programs like:
 etc.
 """
 
-from parsy import eof, regex, seq, string, string_from, whitespace
+from parsy import eof, regex, string, string_from, whitespace, Parser
 
 command = string_from("fd", "bk", "rt", "lt")
 number = regex(r"[0-9]+").map(int)
 optional_whitespace = regex(r"\s*")
 eol = string("\n")
-line = seq(
-    optional_whitespace >> command,
-    whitespace >> number,
-    (eof | eol | (whitespace >> eol)).result("\n"),
-)
-flatten_list = lambda ls: sum(ls, [])
-lexer = line.many().map(flatten_list)
+line = (optional_whitespace >> command) & (whitespace >> number) & (eof | eol | (whitespace >> eol)).result("\n")
+lexer: Parser[list[object]] = line.many().map(lambda lines: sum(([t0, t1, t2] for ((t0, t1), t2) in lines), []))
 
 
-def test_lexer():
+def test_lexer() -> None:
     assert (
         lexer.parse(
             """fd 1
