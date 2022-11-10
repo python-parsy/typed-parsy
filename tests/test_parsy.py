@@ -275,6 +275,13 @@ class TestParser(unittest.TestCase):
         self.assertEqual(ab.at_most(2).parse("abab"), ["ab", "ab"])
         self.assertRaises(ParseError, ab.at_most(2).parse, "ababab")
 
+    def test_at_least(self):
+        ab = string("ab")
+        self.assertEqual(ab.at_least(2).parse("abab"), ["ab", "ab"])
+        self.assertEqual(ab.at_least(2).parse("ababab"), ["ab", "ab", "ab"])
+        self.assertRaises(ParseError, ab.at_least(2).parse, "ab")
+        self.assertEqual(ab.at_least(2).parse_partial("abababc"), (["ab", "ab", "ab"], "c"))
+
     def test_until(self):
 
         until = string("s").until(string("x"))
