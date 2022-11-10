@@ -21,3 +21,14 @@ line = seq(
 )
 flatten_list = lambda ls: sum(ls, [])
 lexer = line.many().map(flatten_list)
+
+
+def test_lexer():
+    assert (
+        lexer.parse(
+            """fd 1
+bk 2
+"""
+        )
+        == ["fd", 1, "\n", "bk", 2, "\n"]
+    )
