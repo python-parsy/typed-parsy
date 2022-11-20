@@ -15,17 +15,11 @@ from typing import Any, Callable, FrozenSet, Generator, Generic, Optional, TypeV
 from .version import __version__  # noqa: F401
 
 
-# Covariance/contravariance:
-
-# Parser[str] is a subtype of Parser[Union[str, int]]
-# Result[str] is a subtype of Result[Union[str, int]]
-# So we want covariance for these.
-
-# However, that gives me problems with any methods that use these type vars.
-
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
 OUT2 = TypeVar("OUT2")
+OUT_co = TypeVar("OUT_co", covariant=True)
+
 
 T = TypeVar("T")
 
@@ -65,10 +59,10 @@ class ParseError(RuntimeError):
 
 
 @dataclass
-class Result(Generic[OUT]):
+class Result(Generic[OUT_co]):
     status: bool
     index: int
-    value: OUT
+    value: OUT_co
     furthest: int
     expected: FrozenSet[str]
 
@@ -310,26 +304,12 @@ class Parser(Generic[OUT]):
         def alt_parser(stream: str, index: int) -> Result[Union[OUT1, OUT2]]:
             result0 = None
 
-            # mypy + pyright complain here e.g.
-            #  Expression of type "Result[OUT1@__or__]" cannot be assigned to return type
-            #  "Result[OUT1@__or__ | OUT2@__or__]"
-            #
-            # I think it should be enough to say that Result is covariant in its OUT parameter.
-            # However, doing that results in a bunch of new errors on other methods:
-            #  "covariant type variable cannot be used in parameter type"
-
-            # I think this is due to worrying about immutability, which isn't a worry for us.
-            # So we just force it here for now using type:ignore, to keep the number of error
-            # message down.
-
-            # We have the same issue in __and__ below
-
             result1 = self(stream, index).aggregate(result0)
             if result1.status:
-                return result1  # type:ignore
+                return result1
 
             result2 = other(stream, index).aggregate(result1)
-            return result2  # type:ignore
+            return result2
 
         return alt_parser
 
