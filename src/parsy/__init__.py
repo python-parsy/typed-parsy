@@ -19,7 +19,9 @@ from .version import __version__  # noqa: F401
 
 # Parser[str] is a subtype of Parser[Union[str, int]]
 # Result[str] is a subtype of Result[Union[str, int]]
-# So we want covariance for these
+# So we want covariance for these.
+
+# However, that gives me problems with any methods that use these type vars.
 
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
@@ -428,6 +430,14 @@ def regex(exp, flags=0, group=0) -> Parser[str]:
     return regex_parser
 
 
+# TODO the rest of the functions here need type annotations.
+
+# One problem is that `test_item` and `match_item` are assumning that the input
+# type might not be str, but arbitrary types, including heterogeneous
+# lists. We have no generic parameter for the input stream type
+# yet, for simplicity.
+
+
 def test_item(func, description):
     @Parser
     def test_item_parser(stream, index):
@@ -461,6 +471,7 @@ def string_from(*strings: str, transform: Callable[[str], str] = noop) -> Parser
     return reduce(operator.or_, [string(s, transform) for s in sorted(strings, key=len, reverse=True)])
 
 
+# TODO drop bytes support here
 def char_from(string):
     if isinstance(string, bytes):
         return test_char(lambda c: c in string, b"[" + string + b"]")
@@ -507,6 +518,12 @@ def from_enum(enum_cls: type[E], transform: Callable = noop) -> Parser[E]:
         ((str(enum_item.value), enum_item) for enum_item in enum_cls), key=lambda t: len(t[0]), reverse=True
     )
     return reduce(operator.or_, [string(value, transform=transform).result(enum_item) for value, enum_item in items])
+
+
+# TODO how do we type a forward_declaration instance? For a typical usage, see
+# examples/json.py. I think this is probably a recursive type issue which is probably
+# mirroring the recursive definition issues that forward_declaration is designed to solve.
+# Cutting the recursive knot might be harder at the type level?
 
 
 class forward_declaration(Parser):
