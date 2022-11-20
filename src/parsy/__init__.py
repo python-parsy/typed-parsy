@@ -9,7 +9,7 @@ import enum
 import re
 from dataclasses import dataclass
 from functools import reduce, wraps
-from typing import Any, Callable, FrozenSet, Generic, Optional, TypeVar, Union
+from typing import Any, Callable, FrozenSet, Generator, Generic, Optional, TypeVar, Union
 
 
 from .version import __version__  # noqa: F401
@@ -359,11 +359,25 @@ class Parser(Generic[OUT]):
         return self.skip(other)
 
 
-# combinator syntax
-def generate(fn):
+# TODO:
+# I think @generate is unfixable. It's not surprising, because
+# we are doing something genuninely unusual with generator functions.
+
+# The return value of a `@generate` parser is now OK.
+
+# But we have no type checking within a user's @generate function.
+
+# The big issue is that each `val = yield parser` inside a @generate parser has
+# a different type, and we'd like those to be typed checked. But the
+# `Generator[...]` expects a homogeneous stream of yield and send types,
+# whereas we have pairs of yield/send types which need to match within the
+# pair, but each pair can be completely different from the next in the stream
+
+
+def generate(fn: Callable[[], Generator[Parser[Any], Any, OUT]]) -> Parser[OUT]:
     @Parser
     @wraps(fn)
-    def generated(stream, index):
+    def generated(stream: str, index: int) -> Result[OUT]:
         # start up the generator
         iterator = fn()
 
@@ -379,9 +393,6 @@ def generate(fn):
                 index = result.index
         except StopIteration as stop:
             returnVal = stop.value
-            if isinstance(returnVal, Parser):
-                return returnVal(stream, index).aggregate(result)
-
             return Result.success(index, returnVal).aggregate(result)
 
     return generated

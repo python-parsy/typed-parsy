@@ -4,11 +4,13 @@ try:
 except ImportError:
     enum = None
 import re
+from typing import Generator
 import unittest
-from collections import namedtuple
-from datetime import date
+
+from typing import Any
 
 from parsy import (
+    Parser,
     ParseError,
     any_char,
     char_from,
@@ -134,7 +136,7 @@ class TestParser(unittest.TestCase):
         x = y = None
 
         @generate
-        def xy():
+        def xy() -> Generator[Parser[Any], Any, int]:
             nonlocal x
             nonlocal y
             x = yield string("x")
@@ -144,14 +146,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(xy.parse("xy"), 3)
         self.assertEqual(x, "x")
         self.assertEqual(y, "y")
-
-    def test_generate_return_parser(self):
-        @generate
-        def example():
-            yield string("x")
-            return string("y")
-
-        self.assertEqual(example.parse("xy"), "y")
 
     def test_mark(self):
         parser = (letter.many().mark() << string("\n")).many()
@@ -189,7 +183,7 @@ class TestParser(unittest.TestCase):
 
     def test_generate_backtracking(self):
         @generate
-        def xy():
+        def xy() -> Generator[Parser[Any], Any, None]:
             yield string("x")
             yield string("y")
             assert False
@@ -480,7 +474,7 @@ class TestParser(unittest.TestCase):
 
     def test_line_info(self):
         @generate
-        def foo():
+        def foo() -> Generator[Any, Any, tuple[str, tuple[int, int]]]:
             i = yield line_info
             l = yield any_char
             return (l, i)
