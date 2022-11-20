@@ -455,7 +455,7 @@ def test_item(func, description):
     return test_item_parser
 
 
-def test_char(func, description):
+def test_char(func: Callable[[str], bool], description: str) -> Parser[str]:
     # Implementation is identical to test_item
     return test_item(func, description)
 
@@ -513,7 +513,7 @@ def eof(stream: str, index: int) -> Result[None]:
 E = TypeVar("E", bound=enum.Enum)
 
 
-def from_enum(enum_cls: type[E], transform: Callable = noop) -> Parser[E]:
+def from_enum(enum_cls: type[E], transform: Callable[[str], str] = noop) -> Parser[E]:
     items = sorted(
         ((str(enum_item.value), enum_item) for enum_item in enum_cls), key=lambda t: len(t[0]), reverse=True
     )
