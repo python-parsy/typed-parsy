@@ -351,11 +351,11 @@ class Parser(Generic[OUT]):
     # haskelley operators, for fun #
 
     # >>
-    def __rshift__(self: Parser, other: Parser[OUT2]) -> Parser[OUT2]:
+    def __rshift__(self, other: Parser[OUT2]) -> Parser[OUT2]:
         return self.then(other)
 
     # <<
-    def __lshift__(self: Parser[OUT1], other: Parser) -> Parser[OUT1]:
+    def __lshift__(self, other: Parser) -> Parser[OUT]:
         return self.skip(other)
 
 
