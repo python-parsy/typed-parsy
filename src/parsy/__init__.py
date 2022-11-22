@@ -194,6 +194,8 @@ class Parser(Generic[OUT]):
         return self.times(0, n)
 
     def at_least(self: Parser[OUT], n: int) -> Parser[list[OUT]]:
+        # TODO: I cannot for the life of me work out why mypy rejects the following.
+        # Pyright does not reject it.
         return (self.times(n) & self.many()).map(lambda t: t[0] + t[1])
 
     # TODO overloads to distinguish calling with and without default
