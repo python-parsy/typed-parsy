@@ -4,14 +4,12 @@ try:
 except ImportError:
     enum = None
 import re
-from typing import Generator
 import unittest
-
-from typing import Any
+from typing import Any, Generator
 
 from parsy import (
-    Parser,
     ParseError,
+    Parser,
     any_char,
     char_from,
     decimal_digit,
@@ -121,6 +119,21 @@ class TestParser(unittest.TestCase):
     def test_and(self):
         parser = digit & letter
         self.assertEqual(parser.parse("1A"), ("1", "A"))
+
+    def test_append(self):
+        parser = digit.join(letter).append(letter)
+        self.assertEqual(parser.parse("1AB"), ("1", "A", "B"))
+
+    def test_combine(self):
+        parser = digit.join(letter).append(letter).combine(lambda a, b, c: (c + b + a))
+        self.assertEqual(parser.parse("1AB"), "BA1")
+
+    def test_combine_mixed_types(self):
+        def demo(a: int, b: str, c: bool) -> tuple[int, str, bool]:
+            return (a, b, c)
+
+        parser = digit.map(int).join(letter).append(digit.map(bool)).combine(demo)
+        self.assertEqual(parser.parse("1A1"), (1, "A", True))
 
     def test_or(self):
         self.assertEqual((letter | digit).parse("a"), "a")

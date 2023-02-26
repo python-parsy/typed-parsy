@@ -3,21 +3,21 @@
 # are mainly for internal use.
 from __future__ import annotations
 
-import operator
 import enum
-
+import operator
 import re
 from dataclasses import dataclass
 from functools import reduce, wraps
-from typing import Any, Callable, FrozenSet, Generator, Generic, Optional, TypeVar, Union
+from typing import Any, Callable, FrozenSet, Generator, Generic, Optional, Tuple, TypeVar, Union
 
+from typing_extensions import TypeVarTuple, Unpack
 
 from .version import __version__  # noqa: F401
-
 
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
 OUT2 = TypeVar("OUT2")
+OUT_T = TypeVarTuple("OUT_T")
 OUT_co = TypeVar("OUT_co", covariant=True)
 
 
@@ -329,6 +329,39 @@ class Parser(Generic[OUT]):
             return Result.success(result2.index, (result1.value, result2.value)).aggregate(result2)
 
         return seq_parser
+
+    def join(self: Parser[OUT1], other: Parser[OUT2]) -> Parser[tuple[OUT1, OUT2]]:
+        """TODO alternative name for `&`, decide on naming"""
+        return self & other
+
+    def append(self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[OUT2]) -> Parser[Tuple[Unpack[OUT_T], OUT2]]:
+        """
+        Take a parser which produces a tuple of values, and add another parser's result
+        to the end of that tuple
+        """
+
+        @Parser
+        def tuple_parser(stream: str, index: int) -> Result[Tuple[Unpack[OUT_T], OUT2]]:
+            result0 = None
+            result1 = self(stream, index).aggregate(result0)
+            if not result1.status:
+                return Result(result1.status, result1.index, None, result1.furthest, result1.expected)  # type: ignore
+            result2 = other(stream, result1.index).aggregate(result1)
+            if not result2.status:
+                return Result(
+                    result2.status, result2.index, (*result1.value, result2.value), result2.furthest, result2.expected
+                )
+
+            return Result.success(result2.index, (*result1.value, result2.value)).aggregate(result2)
+
+        return tuple_parser
+
+    def combine(self: Parser[Tuple[Unpack[OUT_T]]], combine_fn: Callable[[Unpack[OUT_T]], OUT2]) -> Parser[OUT2]:
+        """
+        Apply ``combine_fn`` to the parser result, which must be a tuple. The result
+        is passed as `*args` to ``combine_fn``.
+        """
+        return self.bind(lambda value: success(combine_fn(*value)))
 
     # haskelley operators, for fun #
 
