@@ -6,20 +6,43 @@ from __future__ import annotations
 import enum
 import operator
 import re
-from dataclasses import dataclass
+from dataclasses import Field, dataclass, field
 from functools import reduce, wraps
-from typing import Any, Callable, FrozenSet, Generator, Generic, Optional, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    FrozenSet,
+    Generator,
+    Generic,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
 
-from typing_extensions import TypeVarTuple, Unpack
+from typing_extensions import ParamSpec, TypeVarTuple, Unpack
 
 from .version import __version__  # noqa: F401
 
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
 OUT2 = TypeVar("OUT2")
+OUT3 = TypeVar("OUT3")
+OUT4 = TypeVar("OUT4")
+OUT5 = TypeVar("OUT5")
+OUT6 = TypeVar("OUT6")
 OUT_T = TypeVarTuple("OUT_T")
 OUT_co = TypeVar("OUT_co", covariant=True)
+OUT2_co = TypeVar("OUT2_co", covariant=True)
 
+P = ParamSpec("P")
 
 T = TypeVar("T")
 
@@ -35,6 +58,14 @@ def line_info_at(stream: str, index: int) -> tuple[int, int]:
     last_nl = stream.rfind("\n", 0, index)
     col = index - (last_nl + 1)
     return (line, col)
+
+
+# @dataclass
+# class Stream:
+#     stream: str
+
+#     def at_index(self, index: int):
+#         return memoryview(self.stream)
 
 
 class ParseError(RuntimeError):
@@ -95,7 +126,7 @@ class Result(Generic[OUT_co]):
             return Result(self.status, self.index, self.value, other.furthest, other.expected)
 
 
-class Parser(Generic[OUT]):
+class Parser(Generic[OUT_co]):
     """
     A Parser is an object that wraps a function whose arguments are
     a string to be parsed and the index on which to begin parsing.
@@ -106,18 +137,18 @@ class Parser(Generic[OUT]):
     of the failure.
     """
 
-    def __init__(self, wrapped_fn: Callable[[str, int], Result[OUT]]):
-        self.wrapped_fn: Callable[[str, int], Result[OUT]] = wrapped_fn
+    def __init__(self, wrapped_fn: Callable[[str, int], Result[OUT_co]]):
+        self.wrapped_fn: Callable[[str, int], Result[OUT_co]] = wrapped_fn
 
-    def __call__(self, stream: str, index: int) -> Result[OUT]:
+    def __call__(self, stream: str, index: int) -> Result[OUT_co]:
         return self.wrapped_fn(stream, index)
 
-    def parse(self, stream: str) -> OUT:
+    def parse(self, stream: str) -> OUT_co:
         """Parse a string and return the result or raise a ParseError."""
         (result, _) = (self << eof).parse_partial(stream)
         return result
 
-    def parse_partial(self, stream: str) -> tuple[OUT, str]:
+    def parse_partial(self, stream: str) -> tuple[OUT_co, str]:
         """
         Parse the longest possible prefix of a given string.
         Return a tuple of the result and the rest of the string,
@@ -158,10 +189,10 @@ class Parser(Generic[OUT]):
     def result(self: Parser, res: OUT2) -> Parser[OUT2]:
         return self >> success(res)
 
-    def many(self: Parser[OUT]) -> Parser[list[OUT]]:
+    def many(self: Parser[OUT_co]) -> Parser[list[OUT_co]]:
         return self.times(0, float("inf"))
 
-    def times(self: Parser[OUT], min: int, max: int | float | None = None) -> Parser[list[OUT]]:
+    def times(self: Parser[OUT_co], min: int, max: int | float | None = None) -> Parser[list[OUT_co]]:
         the_max: int | float
         if max is None:
             the_max = min
@@ -170,8 +201,8 @@ class Parser(Generic[OUT]):
 
         # TODO - must execute at least once
         @Parser
-        def times_parser(stream: str, index: int) -> Result[list[OUT]]:
-            values: list[OUT] = []
+        def times_parser(stream: str, index: int) -> Result[list[OUT_co]]:
+            values: list[OUT_co] = []
             times = 0
             result = None
 
@@ -190,10 +221,10 @@ class Parser(Generic[OUT]):
 
         return times_parser
 
-    def at_most(self: Parser[OUT], n: int) -> Parser[list[OUT]]:
+    def at_most(self: Parser[OUT_co], n: int) -> Parser[list[OUT_co]]:
         return self.times(0, n)
 
-    def at_least(self: Parser[OUT], n: int) -> Parser[list[OUT]]:
+    def at_least(self: Parser[OUT_co], n: int) -> Parser[list[OUT_co]]:
         # TODO: I cannot for the life of me work out why mypy rejects the following.
         # Pyright does not reject it.
         return (self.times(n) & self.many()).map(lambda t: t[0] + t[1])
@@ -203,14 +234,14 @@ class Parser(Generic[OUT]):
         return self.times(0, 1).map(lambda v: v[0] if v else default)
 
     def until(
-        self: Parser[OUT],
-        other: Parser[OUT],
+        self: Parser[OUT_co],
+        other: Parser,
         min: int = 0,
         max: int | float = float("inf"),
         consume_other: bool = False,
-    ) -> Parser[list[OUT]]:
+    ) -> Parser[list[OUT_co]]:
         @Parser
-        def until_parser(stream: str, index: int) -> Result[list[OUT]]:
+        def until_parser(stream: str, index: int) -> Result[list[OUT_co]]:
             values = []
             times = 0
             while True:
@@ -245,8 +276,10 @@ class Parser(Generic[OUT]):
 
         return until_parser
 
-    def sep_by(self: Parser[OUT], sep: Parser, *, min: int = 0, max: int | float = float("inf")) -> Parser[list[OUT]]:
-        zero_times: Parser[list[OUT]] = success([])
+    def sep_by(
+        self: Parser[OUT_co], sep: Parser, *, min: int = 0, max: int | float = float("inf")
+    ) -> Parser[list[OUT_co]]:
+        zero_times: Parser[list[OUT_co]] = success([])
         if max == 0:
             return zero_times
         res = (self.times(1) & (sep >> self).times(min - 1, max - 1)).map(lambda t: t[0] + t[1])
@@ -254,9 +287,9 @@ class Parser(Generic[OUT]):
             res |= zero_times
         return res
 
-    def desc(self, description: str) -> Parser[OUT]:
+    def desc(self, description: str) -> Parser[OUT_co]:
         @Parser
-        def desc_parser(stream: str, index: int) -> Result[OUT]:
+        def desc_parser(stream: str, index: int) -> Result[OUT_co]:
             result = self(stream, index)
             if result.status:
                 return result
@@ -334,27 +367,15 @@ class Parser(Generic[OUT]):
         """TODO alternative name for `&`, decide on naming"""
         return self & other
 
-    def append(self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[OUT2]) -> Parser[Tuple[Unpack[OUT_T], OUT2]]:
+    def as_tuple(self: Parser[OUT_co]) -> Parser[Tuple[OUT_co]]:
+        return self.map(lambda value: (value,))
+
+    def append(self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[OUT2_co]) -> Parser[Tuple[Unpack[OUT_T], OUT2_co]]:
         """
         Take a parser which produces a tuple of values, and add another parser's result
         to the end of that tuple
         """
-
-        @Parser
-        def tuple_parser(stream: str, index: int) -> Result[Tuple[Unpack[OUT_T], OUT2]]:
-            result0 = None
-            result1 = self(stream, index).aggregate(result0)
-            if not result1.status:
-                return Result(result1.status, result1.index, None, result1.furthest, result1.expected)  # type: ignore
-            result2 = other(stream, result1.index).aggregate(result1)
-            if not result2.status:
-                return Result(
-                    result2.status, result2.index, (*result1.value, result2.value), result2.furthest, result2.expected
-                )
-
-            return Result.success(result2.index, (*result1.value, result2.value)).aggregate(result2)
-
-        return tuple_parser
+        return self.bind(lambda self_value: other.bind(lambda other_value: success((*self_value, other_value))))
 
     def combine(self: Parser[Tuple[Unpack[OUT_T]]], combine_fn: Callable[[Unpack[OUT_T]], OUT2]) -> Parser[OUT2]:
         """
@@ -366,11 +387,12 @@ class Parser(Generic[OUT]):
     # haskelley operators, for fun #
 
     # >>
-    def __rshift__(self, other: Parser[OUT2]) -> Parser[OUT2]:
+
+    def __rshift__(self, other: Parser[OUT2_co]) -> Parser[OUT2_co]:
         return self.then(other)
 
     # <<
-    def __lshift__(self, other: Parser) -> Parser[OUT]:
+    def __lshift__(self, other: Parser) -> Parser[OUT_co]:
         return self.skip(other)
 
 
@@ -439,9 +461,17 @@ def string(s: str, transform: Callable[[str], str] = noop) -> Parser[str]:
     return string_parser
 
 
-def regex(exp, flags=0, group=0) -> Parser[str]:
-    if isinstance(exp, (str, bytes)):
-        exp = re.compile(exp, flags)
+# @overload
+# def regex(pattern: str, flags:re.RegexFlag, group: int) -> Parser[str]:
+#     ...
+# @overload
+# def regex(pattern: str, *, flags:re.RegexFlag, group: str) -> Parser[str]:
+#     ...
+
+
+def regex(pattern: str, *, flags=re.RegexFlag(0), group: Any = 0) -> Parser[str]:
+    if isinstance(pattern, str):
+        exp = re.compile(pattern, flags)
     if isinstance(group, (str, int)):
         group = (group,)
 
@@ -454,6 +484,62 @@ def regex(exp, flags=0, group=0) -> Parser[str]:
             return Result.failure(index, exp.pattern)
 
     return regex_parser
+
+
+# Each number of args needs to be typed separately
+@overload
+def seq(
+    arg1: Parser[OUT1],
+    arg2: Parser[OUT2],
+    arg3: Parser[OUT3],
+    arg4: Parser[OUT4],
+    arg5: Parser[OUT5],
+    arg6: Parser[OUT6],
+    /,
+) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5, OUT6]]:
+    ...
+
+
+@overload
+def seq(
+    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4], arg5: Parser[OUT5], /
+) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5]]:
+    ...
+
+
+@overload
+def seq(
+    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4], /
+) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4]]:
+    ...
+
+
+@overload
+def seq(arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], /) -> Parser[Tuple[OUT1, OUT2, OUT3]]:
+    ...
+
+
+@overload
+def seq(arg1: Parser[OUT1], arg2: Parser[OUT2], /) -> Parser[Tuple[OUT1, OUT2]]:
+    ...
+
+
+@overload
+def seq(arg1: Parser[OUT1], /) -> Parser[Tuple[OUT1]]:
+    ...
+
+
+@overload
+def seq(arg1: Parser, *args: Parser) -> Parser[Tuple]:
+    ...
+
+
+def seq(arg1: Parser, *args: Parser) -> Parser[Tuple]:
+    arg1 = arg1.as_tuple()
+
+    for p in args:
+        arg1 = arg1.append(p)
+    return arg1
 
 
 # TODO the rest of the functions here need type annotations.
@@ -499,10 +585,7 @@ def string_from(*strings: str, transform: Callable[[str], str] = noop) -> Parser
 
 # TODO drop bytes support here
 def char_from(string):
-    if isinstance(string, bytes):
-        return test_char(lambda c: c in string, b"[" + string + b"]")
-    else:
-        return test_char(lambda c: c in string, "[" + string + "]")
+    return test_char(lambda c: c in string, "[" + string + "]")
 
 
 def peek(parser):
@@ -552,7 +635,7 @@ def from_enum(enum_cls: type[E], transform: Callable[[str], str] = noop) -> Pars
 # Cutting the recursive knot might be harder at the type level?
 
 
-class forward_declaration(Parser):
+class forward_declaration(Parser[OUT]):
     """
     An empty parser that can be used as a forward declaration,
     especially for parsers that need to be defined recursively.
@@ -569,6 +652,56 @@ class forward_declaration(Parser):
     parse = _raise_error
     parse_partial = _raise_error
 
-    def become(self, other: Parser) -> None:
+    def become(self, other: Parser[OUT2]) -> Parser[OUT2]:
         self.__dict__ = other.__dict__
         self.__class__ = other.__class__
+        self = cast(Parser[OUT2], self)
+        return self
+
+
+# Dataclass parsers
+
+
+_T = TypeVar("_T")
+
+
+def parse_field(
+    parser: Parser[_T],
+    *,
+    default: _T = ...,
+    init: bool = ...,
+    repr: bool = ...,
+    hash: Union[bool, None] = ...,
+    compare: bool = ...,
+    metadata: Mapping[Any, Any] = ...,
+) -> _T:
+    if metadata is Ellipsis:
+        metadata = {}
+    return field(
+        default=default, init=init, repr=repr, hash=hash, compare=compare, metadata={**metadata, "parser": parser}
+    )
+
+
+class DataClassProtocol(Protocol):
+    __dataclass_fields__: ClassVar[Dict[str, Field]]
+
+
+OUT_D = TypeVar("OUT_D", bound=DataClassProtocol)
+
+
+def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
+    @Parser
+    def data_parser(stream: str, index: int) -> Result[OUT_D]:
+        fields: Dict[str, Any] = {}
+        result = Result.success(index, None)
+        for fieldname, field in datatype.__dataclass_fields__.items():
+            parser: Parser[Any] = field.metadata["parser"]
+            result = parser(stream, index)
+            if not result.status:
+                return result
+            index = result.index
+            fields[fieldname] = result.value
+
+        return Result.success(result.index, datatype(**fields))
+
+    return data_parser
