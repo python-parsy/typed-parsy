@@ -16,9 +16,9 @@ from typing import (
     FrozenSet,
     Generator,
     Generic,
+    List,
     Mapping,
     Optional,
-    Protocol,
     Tuple,
     Type,
     TypeVar,
@@ -27,9 +27,7 @@ from typing import (
     overload,
 )
 
-from typing_extensions import ParamSpec, TypeVarTuple, Unpack
-
-from .version import __version__  # noqa: F401
+from typing_extensions import ParamSpec, Protocol, TypeVarTuple, Unpack
 
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
@@ -51,7 +49,7 @@ def noop(val: T) -> T:
     return val
 
 
-def line_info_at(stream: str, index: int) -> tuple[int, int]:
+def line_info_at(stream: str, index: int) -> Tuple[int, int]:
     if index > len(stream):
         raise ValueError("invalid index")
     line = stream.count("\n", 0, index)
@@ -148,7 +146,7 @@ class Parser(Generic[OUT_co]):
         (result, _) = (self << eof).parse_partial(stream)
         return result
 
-    def parse_partial(self, stream: str) -> tuple[OUT_co, str]:
+    def parse_partial(self, stream: str) -> Tuple[OUT_co, str]:
         """
         Parse the longest possible prefix of a given string.
         Return a tuple of the result and the rest of the string,
@@ -177,7 +175,7 @@ class Parser(Generic[OUT_co]):
     def map(self: Parser[OUT1], map_fn: Callable[[OUT1], OUT2]) -> Parser[OUT2]:
         return self.bind(lambda res: success(map_fn(res)))
 
-    def concat(self: Parser[list[str]]) -> Parser[str]:
+    def concat(self: Parser[List[str]]) -> Parser[str]:
         return self.map("".join)
 
     def then(self: Parser, other: Parser[OUT2]) -> Parser[OUT2]:
@@ -189,10 +187,10 @@ class Parser(Generic[OUT_co]):
     def result(self: Parser, res: OUT2) -> Parser[OUT2]:
         return self >> success(res)
 
-    def many(self: Parser[OUT_co]) -> Parser[list[OUT_co]]:
+    def many(self: Parser[OUT_co]) -> Parser[List[OUT_co]]:
         return self.times(0, float("inf"))
 
-    def times(self: Parser[OUT_co], min: int, max: int | float | None = None) -> Parser[list[OUT_co]]:
+    def times(self: Parser[OUT_co], min: int, max: int | float | None = None) -> Parser[List[OUT_co]]:
         the_max: int | float
         if max is None:
             the_max = min
@@ -201,8 +199,8 @@ class Parser(Generic[OUT_co]):
 
         # TODO - must execute at least once
         @Parser
-        def times_parser(stream: str, index: int) -> Result[list[OUT_co]]:
-            values: list[OUT_co] = []
+        def times_parser(stream: str, index: int) -> Result[List[OUT_co]]:
+            values: List[OUT_co] = []
             times = 0
             result = None
 
@@ -221,10 +219,10 @@ class Parser(Generic[OUT_co]):
 
         return times_parser
 
-    def at_most(self: Parser[OUT_co], n: int) -> Parser[list[OUT_co]]:
+    def at_most(self: Parser[OUT_co], n: int) -> Parser[List[OUT_co]]:
         return self.times(0, n)
 
-    def at_least(self: Parser[OUT_co], n: int) -> Parser[list[OUT_co]]:
+    def at_least(self: Parser[OUT_co], n: int) -> Parser[List[OUT_co]]:
         # TODO: I cannot for the life of me work out why mypy rejects the following.
         # Pyright does not reject it.
         return (self.times(n) & self.many()).map(lambda t: t[0] + t[1])
@@ -239,9 +237,9 @@ class Parser(Generic[OUT_co]):
         min: int = 0,
         max: int | float = float("inf"),
         consume_other: bool = False,
-    ) -> Parser[list[OUT_co]]:
+    ) -> Parser[List[OUT_co]]:
         @Parser
-        def until_parser(stream: str, index: int) -> Result[list[OUT_co]]:
+        def until_parser(stream: str, index: int) -> Result[List[OUT_co]]:
             values = []
             times = 0
             while True:
@@ -278,8 +276,8 @@ class Parser(Generic[OUT_co]):
 
     def sep_by(
         self: Parser[OUT_co], sep: Parser, *, min: int = 0, max: int | float = float("inf")
-    ) -> Parser[list[OUT_co]]:
-        zero_times: Parser[list[OUT_co]] = success([])
+    ) -> Parser[List[OUT_co]]:
+        zero_times: Parser[List[OUT_co]] = success([])
         if max == 0:
             return zero_times
         res = (self.times(1) & (sep >> self).times(min - 1, max - 1)).map(lambda t: t[0] + t[1])
@@ -472,6 +470,8 @@ def string(s: str, transform: Callable[[str], str] = noop) -> Parser[str]:
 def regex(pattern: str, *, flags=re.RegexFlag(0), group: Any = 0) -> Parser[str]:
     if isinstance(pattern, str):
         exp = re.compile(pattern, flags)
+    else:
+        exp = pattern
     if isinstance(group, (str, int)):
         group = (group,)
 
@@ -494,38 +494,37 @@ def seq(
     arg3: Parser[OUT3],
     arg4: Parser[OUT4],
     arg5: Parser[OUT5],
-    arg6: Parser[OUT6],
-    /,
+    arg6: Parser[OUT6]
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5, OUT6]]:
     ...
 
 
 @overload
 def seq(
-    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4], arg5: Parser[OUT5], /
+    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4], arg5: Parser[OUT5]
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5]]:
     ...
 
 
 @overload
 def seq(
-    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4], /
+    arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], arg4: Parser[OUT4]
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4]]:
     ...
 
 
 @overload
-def seq(arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3], /) -> Parser[Tuple[OUT1, OUT2, OUT3]]:
+def seq(arg1: Parser[OUT1], arg2: Parser[OUT2], arg3: Parser[OUT3]) -> Parser[Tuple[OUT1, OUT2, OUT3]]:
     ...
 
 
 @overload
-def seq(arg1: Parser[OUT1], arg2: Parser[OUT2], /) -> Parser[Tuple[OUT1, OUT2]]:
+def seq(arg1: Parser[OUT1], arg2: Parser[OUT2]) -> Parser[Tuple[OUT1, OUT2]]:
     ...
 
 
 @overload
-def seq(arg1: Parser[OUT1], /) -> Parser[Tuple[OUT1]]:
+def seq(arg1: Parser[OUT1]) -> Parser[Tuple[OUT1]]:
     ...
 
 

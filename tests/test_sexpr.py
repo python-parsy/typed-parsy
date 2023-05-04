@@ -3,7 +3,7 @@ import unittest
 
 from parsy import generate, regex, string
 
-whitespace = regex(r"\s+", re.MULTILINE)
+whitespace = regex(r"\s+")
 comment = regex(r";.*")
 ignore = (whitespace | comment).many()
 
