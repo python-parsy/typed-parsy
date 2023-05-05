@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from parsy import dataparser, parse_field, regex, string, whitespace
@@ -56,3 +56,27 @@ res = [
     ),
     PersonDetail(id=Id(id="123", from_year=2004), forename=Name(name="Bob", abbreviated=None), surname=None),
 ]
+
+# Dataclass parsing where not all fields have a parsy parser
+
+
+
+@dataclass
+class PersonWithRarity:
+    name: str = parse_field(regex(r"\w+") << whitespace)
+    age: int = parse_field(regex(r"\d+").map(int) << whitespace)
+    note: str = parse_field(regex(".+"))
+    rare: bool = False
+
+    def __post_init__(self):
+        if self.age > 70:
+            self.rare = True
+
+person_parser = dataparser(PersonWithRarity)
+person = person_parser.parse("Rob 20 whippersnapper")
+print(person)
+assert person == PersonWithRarity(name="Rob", age=20, note="whippersnapper", rare=False)
+
+person = person_parser.parse("Rob 2000 how time flies")
+print(person)
+assert person == PersonWithRarity(name="Rob", age=2000, note="how time flies", rare=True)

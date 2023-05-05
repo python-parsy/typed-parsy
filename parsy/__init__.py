@@ -694,6 +694,8 @@ def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
         fields: Dict[str, Any] = {}
         result = Result.success(index, None)
         for fieldname, field in datatype.__dataclass_fields__.items():
+            if "parser" not in field.metadata:
+                continue
             parser: Parser[Any] = field.metadata["parser"]
             result = parser(stream, index)
             if not result.status:
