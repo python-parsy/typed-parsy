@@ -494,7 +494,7 @@ def seq(
     arg3: Parser[OUT3],
     arg4: Parser[OUT4],
     arg5: Parser[OUT5],
-    arg6: Parser[OUT6]
+    arg6: Parser[OUT6],
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5, OUT6]]:
     ...
 
@@ -661,19 +661,16 @@ class forward_declaration(Parser[OUT]):
 # Dataclass parsers
 
 
-_T = TypeVar("_T")
-
-
 def parse_field(
-    parser: Parser[_T],
+    parser: Parser[OUT],
     *,
-    default: _T = ...,
+    default: OUT = ...,
     init: bool = ...,
     repr: bool = ...,
     hash: Union[bool, None] = ...,
     compare: bool = ...,
     metadata: Mapping[Any, Any] = ...,
-) -> _T:
+) -> OUT:
     if metadata is Ellipsis:
         metadata = {}
     return field(
@@ -706,3 +703,30 @@ def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
         return Result.success(result.index, datatype(**fields))
 
     return data_parser
+
+
+@dataclass
+class DataParser:
+    @classmethod
+    def parser(cls):
+        @Parser
+        def data_parser(stream: str, index: int) -> Result[cls]:
+            fields: Dict[str, Any] = {}
+            result = Result.success(index, None)
+            at_least_one_parser = False
+            for fieldname, field in cls.__dataclass_fields__.items():
+                if "parser" not in field.metadata:
+                    continue
+                at_least_one_parser = True
+                parser: Parser[Any] = field.metadata["parser"]
+                result = parser(stream, index)
+                if not result.status:
+                    return result
+                index = result.index
+                fields[fieldname] = result.value
+
+            if not at_least_one_parser:
+                raise ValueError("Called data_parser on a class containing no parser fields")
+            return Result.success(result.index, cls(**fields))
+
+        return data_parser
