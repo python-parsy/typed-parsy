@@ -1,8 +1,6 @@
-
-
-
 from dataclasses import dataclass
-from typing import Generator, Union
+from typing import Generator
+
 from parsy import Parser, generate, regex, success, whitespace
 
 
@@ -34,6 +32,7 @@ def person_parser():
         return Person(name, age, note)
 
     return person_parser
+
 
 person = person_parser().parse("Rob 21 once upon a time")
 

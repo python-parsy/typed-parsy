@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import TypeVar
 
-from typing_extensions import TypeVarTuple
 
 from parsy import regex, seq, whitespace
 
@@ -11,6 +9,7 @@ class Person:
     name: str
     age: int
     note: str
+
 
 person_arg_sequence = seq(
     regex(r"\w+"),

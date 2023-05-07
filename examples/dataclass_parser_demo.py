@@ -1,8 +1,7 @@
-from dataclasses import dataclass, field, fields
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List
 
-from parsy import DataParser, dataparser, parse_field, regex, string, whitespace
-
+from parsy import dataparser, parse_field, regex, string
 
 text = """Sample text
 

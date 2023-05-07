@@ -9,6 +9,7 @@ etc.
 """
 
 from typing import List
+
 from parsy import Parser, eof, regex, string, string_from, whitespace
 
 command = string_from("fd", "bk", "rt", "lt")

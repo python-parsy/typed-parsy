@@ -1,4 +1,3 @@
-import re
 import unittest
 
 from parsy import generate, regex, string
