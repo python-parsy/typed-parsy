@@ -6,7 +6,7 @@ from __future__ import annotations
 import enum
 import operator
 import re
-from dataclasses import Field, dataclass, field
+from dataclasses import Field, dataclass, field, fields
 from functools import reduce, wraps
 from typing import (
     Any,
@@ -688,9 +688,9 @@ OUT_D = TypeVar("OUT_D", bound=DataClassProtocol)
 def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
     @Parser
     def data_parser(stream: str, index: int) -> Result[OUT_D]:
-        fields: Dict[str, Any] = {}
+        parsed_fields: Dict[str, Any] = {}
         result = Result.success(index, None)
-        for fieldname, field in datatype.__dataclass_fields__.items():
+        for field in fields(datatype):
             if "parser" not in field.metadata:
                 continue
             parser: Parser[Any] = field.metadata["parser"]
@@ -698,9 +698,9 @@ def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
             if not result.status:
                 return result
             index = result.index
-            fields[fieldname] = result.value
+            parsed_fields[field.name] = result.value
 
-        return Result.success(result.index, datatype(**fields))
+        return Result.success(result.index, datatype(**parsed_fields))
 
     return data_parser
 

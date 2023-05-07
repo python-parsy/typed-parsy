@@ -1,7 +1,8 @@
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field, fields
+from typing import List, Optional
 
-from parsy import dataparser, parse_field, regex, string
+from parsy import DataParser, dataparser, parse_field, regex, string, whitespace
+
 
 text = """Sample text
 
@@ -107,9 +108,6 @@ class File:
     schools: List[School] = parse_field(dataparser(School).many())
 
 
-parser = dataparser(File)
-
-
 if __name__ == "__main__":
-    file = parser.parse(text)
+    file = dataparser(File).parse(text)
     print(file.schools)
