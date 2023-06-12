@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from parsy import DataParser, dataparser, parse_field, regex, string, whitespace
+from parsy import dataparser, parse_field, regex, string, whitespace
 
 
 @dataclass
@@ -80,13 +80,3 @@ assert person == PersonWithRarity(name="Rob", age=20, note="whippersnapper", rar
 person = person_parser.parse("Rob 2000 how time flies")
 print(person)
 assert person == PersonWithRarity(name="Rob", age=2000, note="how time flies", rare=True)
-
-
-@dataclass
-class PersonFromBase(DataParser):
-    name: str = parse_field(regex(r"\w+") << whitespace)
-    age: int = parse_field(regex(r"\d+").map(int) << whitespace)
-    note: str = parse_field(regex(".+"))
-
-
-print(PersonFromBase.parser().parse("Rob 2000 how time flies"))

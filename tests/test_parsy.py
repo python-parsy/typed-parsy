@@ -1,8 +1,5 @@
 # -*- code: utf8 -*-
-try:
-    import enum
-except ImportError:
-    enum = None
+import enum
 import re
 import unittest
 from typing import Any, Generator, Tuple
@@ -10,6 +7,7 @@ from typing import Any, Generator, Tuple
 from parsy import (
     ParseError,
     Parser,
+    Result,
     any_char,
     char_from,
     decimal_digit,
@@ -21,14 +19,12 @@ from parsy import (
     letter,
     line_info,
     line_info_at,
-    match_item,
     peek,
     regex,
     string,
     string_from,
 )
 from parsy import test_char as parsy_test_char  # to stop pytest thinking this function is a test
-from parsy import test_item as parsy_test_item  # to stop pytest thinking this function is a test
 from parsy import whitespace
 
 
@@ -285,7 +281,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(ab.at_least(2).parse_partial("abababc"), (["ab", "ab", "ab"], "c"))
 
     def test_until(self):
-
         until = string("s").until(string("x"))
 
         s = "ssssx"
@@ -305,7 +300,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(until.parse_partial("xxxx"), ([], "xxxx"))
 
     def test_until_with_consume_other(self):
-
         until = string("s").until(string("x"), consume_other=True)
 
         self.assertEqual(until.parse("ssssx"), 4 * ["s"] + ["x"])
@@ -317,7 +311,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, until.parse, "xssssxy")
 
     def test_until_with_min(self):
-
         until = string("s").until(string("x"), min=3)
 
         self.assertEqual(until.parse_partial("sssx"), (3 * ["s"], "x"))
@@ -326,7 +319,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, until.parse_partial, "ssx")
 
     def test_until_with_max(self):
-
         # until with max
         until = string("s").until(string("x"), max=3)
 
@@ -336,7 +328,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, until.parse_partial, "ssssx")
 
     def test_until_with_min_max(self):
-
         until = string("s").until(string("x"), min=3, max=5)
 
         self.assertEqual(until.parse_partial("sssx"), (3 * ["s"], "x"))
@@ -512,17 +503,24 @@ class TestParser(unittest.TestCase):
 
         self.assertRaises(ParseError, not_a_digit.parse, "8ab")
 
-    if enum is not None:
+    def test_should_fail_isolated(self):
+        not_a_digit = digit.should_fail("not a digit")
 
-        def test_from_enum_string(self):
-            class Pet(enum.Enum):
-                CAT = "cat"
-                DOG = "dog"
+        self.assertEqual(
+            not_a_digit.parse_partial("a"),
+            (Result(status=False, index=-1, value=None, furthest=0, expected=frozenset({"a digit"})), "a"),
+        )
+        self.assertRaises(ParseError, not_a_digit.parse_partial, "1")
 
-            pet = from_enum(Pet)
-            self.assertEqual(pet.parse("cat"), Pet.CAT)
-            self.assertEqual(pet.parse("dog"), Pet.DOG)
-            self.assertRaises(ParseError, pet.parse, "foo")
+    def test_from_enum_string(self):
+        class Pet(enum.Enum):
+            CAT = "cat"
+            DOG = "dog"
+
+        pet = from_enum(Pet)
+        self.assertEqual(pet.parse("cat"), Pet.CAT)
+        self.assertEqual(pet.parse("dog"), Pet.DOG)
+        self.assertRaises(ParseError, pet.parse, "foo")
 
         def test_from_enum_int(self):
             class Position(enum.Enum):
@@ -542,54 +540,6 @@ class TestParser(unittest.TestCase):
             pet = from_enum(Pet, transform=lambda s: s.lower())
             self.assertEqual(pet.parse("cat"), Pet.CAT)
             self.assertEqual(pet.parse("CAT"), Pet.CAT)
-
-
-class TestParserTokens(unittest.TestCase):
-    """
-    Tests that ensure that `.parse` can handle an arbitrary list of tokens,
-    rather than a string.
-    """
-
-    # Some opaque objects we will use in our stream:
-    START = object()
-    STOP = object()
-
-    def test_test_item(self):
-        start_stop = parsy_test_item(lambda i: i in [self.START, self.STOP], "START/STOP")
-        self.assertEqual(start_stop.parse([self.START]), self.START)
-        self.assertEqual(start_stop.parse([self.STOP]), self.STOP)
-        with self.assertRaises(ParseError) as err:
-            start_stop.many().parse([self.START, "hello"])
-
-        ex = err.exception
-        self.assertEqual(str(ex), "expected one of 'EOF', 'START/STOP' at 1")
-        self.assertEqual(ex.expected, {"EOF", "START/STOP"})
-        self.assertEqual(ex.index, 1)
-
-    def test_match_item(self):
-        self.assertEqual(match_item(self.START).parse([self.START]), self.START)
-        with self.assertRaises(ParseError) as err:
-            match_item(self.START, "START").parse([])
-
-        ex = err.exception
-        self.assertEqual(str(ex), "expected 'START' at 0")
-
-    def test_parse_tokens(self):
-        other_vals = parsy_test_item(lambda i: i not in [self.START, self.STOP], "not START/STOP")
-
-        bracketed = match_item(self.START) >> other_vals.many() << match_item(self.STOP)
-        stream = [self.START, "hello", 1, 2, "goodbye", self.STOP]
-        result = bracketed.parse(stream)
-        self.assertEqual(result, ["hello", 1, 2, "goodbye"])
-
-    def test_index(self):
-        @generate
-        def foo():
-            i = yield index
-            l = yield letter
-            return (l, i)
-
-        self.assertEqual(foo.many().parse(["A", "B"]), [("A", 0), ("B", 1)])
 
 
 class TestUtils(unittest.TestCase):
