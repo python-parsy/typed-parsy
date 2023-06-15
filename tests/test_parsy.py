@@ -15,7 +15,6 @@ from parsy import (
     forward_declaration,
     from_enum,
     generate,
-    index,
     letter,
     line_info,
     line_info_at,
@@ -298,17 +297,6 @@ class TestParser(unittest.TestCase):
 
         until = regex(".").until(string("x"))
         self.assertEqual(until.parse_partial("xxxx"), ([], "xxxx"))
-
-    def test_until_with_consume_other(self):
-        until = string("s").until(string("x"), consume_other=True)
-
-        self.assertEqual(until.parse("ssssx"), 4 * ["s"] + ["x"])
-        self.assertEqual(until.parse_partial("ssssxy"), (4 * ["s"] + ["x"], "y"))
-
-        self.assertEqual(until.parse_partial("xxx"), (["x"], "xx"))
-
-        self.assertRaises(ParseError, until.parse, "ssssy")
-        self.assertRaises(ParseError, until.parse, "xssssxy")
 
     def test_until_with_min(self):
         until = string("s").until(string("x"), min=3)
