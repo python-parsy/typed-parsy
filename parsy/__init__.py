@@ -242,20 +242,15 @@ class Parser(Generic[OUT_co]):
         other: Parser[Any],
         min: int = 0,
         max: int | float = float("inf"),
-        consume_other: bool = False,
     ) -> Parser[List[OUT_co]]:
         @Parser
         def until_parser(stream: str, index: int) -> Result[List[OUT_co]]:
-            values = []
+            values: List[OUT_co] = []
             times = 0
             while True:
                 # try parser first
                 res = other(stream, index)
                 if res.status and times >= min:
-                    if consume_other:
-                        # consume other
-                        values.append(res.value)
-                        index = res.index
                     return Result.success(index, values)
 
                 # exceeded max?
@@ -282,7 +277,7 @@ class Parser(Generic[OUT_co]):
     def sep_by(
         self: Parser[OUT_co], sep: Parser[Any], *, min: int = 0, max: int | float = float("inf")
     ) -> Parser[List[OUT_co]]:
-        zero_times: Parser[List[OUT_co]] = success([])
+        zero_times = success(list[OUT_co]())
         if max == 0:
             return zero_times
         # TODO
@@ -523,8 +518,7 @@ def regex(
         def regex_parser_tuple(stream: str, index: int) -> Result[Tuple[str, ...]]:
             match = exp.match(stream, index)
             if match:
-                match_result = match.group(first_group, second_group, *groups)
-                return Result.success(match.end(), match_result)
+                return Result.success(match.end(), match.group(first_group, second_group, *groups))
             else:
                 return Result.failure(index, exp.pattern)
 
@@ -733,7 +727,7 @@ def parse_field(
 
 class DataClassProtocol(Protocol):
     __dataclass_fields__: ClassVar[Dict[str, Field[Any]]]
-    __init__: Callable
+    __init__: Callable[..., Any]
 
 
 OUT_D = TypeVar("OUT_D", bound=DataClassProtocol)
