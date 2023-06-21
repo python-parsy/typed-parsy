@@ -17,9 +17,9 @@ from typing import (
     Generator,
     Generic,
     List,
-    Literal,
     Mapping,
     Optional,
+    Pattern,
     Tuple,
     Type,
     TypeVar,
@@ -28,7 +28,7 @@ from typing import (
     overload,
 )
 
-from typing_extensions import ParamSpec, Protocol, TypeVarTuple, Unpack
+from typing_extensions import Literal, ParamSpec, Protocol, TypeVarTuple, Unpack
 
 OUT = TypeVar("OUT")
 OUT1 = TypeVar("OUT1")
@@ -38,12 +38,14 @@ OUT4 = TypeVar("OUT4")
 OUT5 = TypeVar("OUT5")
 OUT6 = TypeVar("OUT6")
 OUT_T = TypeVarTuple("OUT_T")
+OUT_T2 = TypeVarTuple("OUT_T2")
 OUT_co = TypeVar("OUT_co", covariant=True)
 OUT2_co = TypeVar("OUT2_co", covariant=True)
 
 P = ParamSpec("P")
 
 T = TypeVar("T")
+T_co = TypeVar("T_co", covariant=True)
 
 
 def noop(val: T) -> T:
@@ -123,6 +125,20 @@ class Result(Generic[OUT_co]):
             return Result(self.status, self.index, self.value, self.furthest, self.expected | other.expected)
         else:
             return Result(self.status, self.index, self.value, other.furthest, other.expected)
+
+
+class Addable(Protocol):
+    def __add__(__self: T, __other: T) -> T:
+        ...
+
+
+Tadd = TypeVar("Tadd", bound=Addable, covariant=True)
+
+
+# def xx(a: Tuple[Unpack[OUT_T]], b: Tuple[Unpack[OUT_T2]]) -> Tuple[Unpack[OUT_T], Unpack[OUT_T2]]:
+#     return a + b
+
+a = tuple("a")
 
 
 class Parser(Generic[OUT_co]):
@@ -275,13 +291,13 @@ class Parser(Generic[OUT_co]):
         return until_parser
 
     def sep_by(
-        self: Parser[OUT_co], sep: Parser[Any], *, min: int = 0, max: int | float = float("inf")
-    ) -> Parser[List[OUT_co]]:
-        zero_times = success(list[OUT_co]())
+        self: Parser[OUT], sep: Parser[Any], *, min: int = 0, max: int | float = float("inf")
+    ) -> Parser[List[OUT]]:
+        zero_times = success(cast(List[OUT], []))
         if max == 0:
             return zero_times
-        # TODO
-        res = (self & (sep >> self).times(min - 1, max - 1)).map(lambda t: [t[0], *t[1]])
+
+        res = (self & (sep >> self).times(min - 1, max - 1)).combine(lambda first, repeats: [first, *repeats])
         if min == 0:
             res = res | zero_times
         return res
@@ -313,13 +329,60 @@ class Parser(Generic[OUT_co]):
 
         return fail_parser
 
-    def __add__(self: Parser[str], other: Parser[str]) -> Parser[str]:
-        # TODO it would be nice to get more generic type checks here.
-        # I want some way of saying "the input value can be any
-        # type that has an ``__add__`` method that returns the same type
-        # as the two inputs". This would allow us to use it for both
-        # `str` and `list`, which satisfy that.
-        return (self & other).map(lambda t: t[0] + t[1])
+    # Special cases for adding tuples
+    # We have to unroll each number of elements of the second tuple because Pylance
+    # can only "Unpack" one tuple at a time
+    @overload
+    def __add__(self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1]]) -> Parser[Tuple[Unpack[OUT_T], OUT1]]:
+        ...
+
+    @overload
+    def __add__(
+        self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1, OUT2]]
+    ) -> Parser[Tuple[Unpack[OUT_T], OUT1, OUT2]]:
+        ...
+
+    @overload
+    def __add__(
+        self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1, OUT2, OUT3]]
+    ) -> Parser[Tuple[Unpack[OUT_T], OUT1, OUT2, OUT3]]:
+        ...
+
+    @overload
+    def __add__(
+        self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1, OUT2, OUT3, OUT4]]
+    ) -> Parser[Tuple[Unpack[OUT_T], OUT1, OUT2, OUT3, OUT4]]:
+        ...
+
+    @overload
+    def __add__(
+        self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5]]
+    ) -> Parser[Tuple[Unpack[OUT_T], OUT1, OUT2, OUT3, OUT4, OUT5]]:
+        ...
+
+    # This covers tuples where `other` has more elements than the above overloads
+    # and all types are the same in `self` and `other`
+    @overload
+    def __add__(
+        self: Parser[Tuple[OUT, ...]], other: Parser[Tuple[OUT, ...]]
+    ) -> Parser[Tuple[OUT, ...]]:
+        ...
+
+    # Same as above, but for when all types are not the same
+    @overload
+    def __add__(
+        self: Parser[Tuple[Any, ...]], other: Parser[Tuple[Any, ...]]
+    ) -> Parser[Tuple[Any, ...]]:
+        ...
+
+
+    # Type annotations for any addable types
+    @overload
+    def __add__(self: Parser[Tadd], other: Parser[Tadd]) -> Parser[Tadd]:
+        ...
+
+    def __add__(self: Parser[Any], other: Parser[Any]) -> Parser[Any]:
+        return (self & other).combine(lambda first, second: first + second)
 
     def __mul__(self: Parser[OUT], other: range | int) -> Parser[List[OUT]]:
         if isinstance(other, range):
@@ -342,18 +405,17 @@ class Parser(Generic[OUT_co]):
 
     def __and__(self: Parser[OUT1], other: Parser[OUT2]) -> Parser[tuple[OUT1, OUT2]]:
         @Parser
-        def seq_parser(stream: str, index: int) -> Result[tuple[OUT1, OUT2]]:
-            result0 = None
-            result1 = self(stream, index).aggregate(result0)
-            if not result1.status:
-                return result1  # type: ignore
-            result2 = other(stream, result1.index).aggregate(result1)
-            if not result2.status:
-                return result2  # type: ignore
+        def and_parser(stream: str, index: int) -> Result[tuple[OUT1, OUT2]]:
+            self_result = self(stream, index)
+            if not self_result.status:
+                return self_result  # type: ignore
+            other_result = other(stream, self_result.index).aggregate(self_result)
+            if not other_result.status:
+                return other_result  # type: ignore
 
-            return Result.success(result2.index, (result1.value, result2.value)).aggregate(result2)
+            return Result.success(other_result.index, (self_result.value, other_result.value)).aggregate(other_result)
 
-        return seq_parser
+        return and_parser
 
     def join(self: Parser[OUT1], other: Parser[OUT2]) -> Parser[tuple[OUT1, OUT2]]:
         """TODO alternative name for `&`, decide on naming"""
@@ -452,19 +514,17 @@ def string(s: str, transform: Callable[[str], str] = noop) -> Parser[str]:
 
     return string_parser
 
-PatternType = Union[str, re.Pattern[str]]
+
+PatternType = Union[str, Pattern[str]]
+
 
 @overload
-def regex(
-    pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: Literal[0] = 0
-) -> Parser[str]:
+def regex(pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: Literal[0] = 0) -> Parser[str]:
     ...
 
 
 @overload
-def regex(
-    pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: str | int
-) -> Parser[str]:
+def regex(pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: str | int) -> Parser[str]:
     ...
 
 
@@ -481,21 +541,30 @@ def regex(
 ) -> Parser[Tuple[str, str]]:
     ...
 
+
 @overload
 def regex(
     pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: Tuple[str | int, str | int, str | int]
 ) -> Parser[Tuple[str, str, str]]:
     ...
 
-@overload
-def regex(
-    pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: Tuple[str | int, str | int, str | int, str | int]
-) -> Parser[Tuple[str, str, str, str]]:
-    ...
 
 @overload
 def regex(
-    pattern: PatternType, *, flags: re.RegexFlag = re.RegexFlag(0), group: Tuple[str | int, str | int, str | int, str | int, str | int]
+    pattern: PatternType,
+    *,
+    flags: re.RegexFlag = re.RegexFlag(0),
+    group: Tuple[str | int, str | int, str | int, str | int],
+) -> Parser[Tuple[str, str, str, str]]:
+    ...
+
+
+@overload
+def regex(
+    pattern: PatternType,
+    *,
+    flags: re.RegexFlag = re.RegexFlag(0),
+    group: Tuple[str | int, str | int, str | int, str | int, str | int],
 ) -> Parser[Tuple[str, str, str, str, str]]:
     ...
 

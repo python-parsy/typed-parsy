@@ -2,7 +2,7 @@
 import enum
 import re
 import unittest
-from typing import Any, Generator, Tuple
+from typing import Any, Generator, List, Tuple, cast
 
 from parsy import (
     ParseError,
@@ -95,7 +95,7 @@ class TestParser(unittest.TestCase):
     def test_bind(self):
         piped = None
 
-        def binder(x):
+        def binder(x: str):
             nonlocal piped
             piped = x
             return string("y")
@@ -365,8 +365,65 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, digit_list.parse, "7.6")
         self.assertEqual(digit.sep_by(string(","), max=0).parse(""), [])
 
-    def test_add(self):
-        self.assertEqual((letter + digit).parse("a1"), "a1")
+    def test_add_tuple(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d").map(int)
+        two_int_parser = int_parser & int_parser
+        barcode = letter_tuple + two_int_parser
+
+        def my_foo(first: str, second: int, third: int) -> str:
+            return first + str(third + second)
+
+        foo_parser = barcode.combine(my_foo)
+
+        self.assertEqual(foo_parser.parse("a13"), "a4")
+
+    def test_add_too_long_tuple_uniform_types(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d")
+        six_int_parser = (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        barcode = letter_tuple + six_int_parser
+
+        def my_bar(first: str, *second: str) -> str:
+            return first + "-".join(second)
+
+        foo_parser = barcode.combine(my_bar)
+
+        self.assertEqual(foo_parser.parse("a123456"), "a1-2-3-4-5-6")
+
+    def test_add_too_long_tuple_different_types(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d").map(int)
+        six_int_parser = (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        barcode = letter_tuple + six_int_parser
+
+        def my_bar(first: str, *second: int) -> str:
+            return first + str(sum(second))
+
+        foo_parser = barcode.combine(my_bar)
+
+        self.assertEqual(foo_parser.parse("a111111"), "a6")
+
+    def test_add_list(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letters = letter.many()
+        number_chars = regex(r"\d").many()
+        letters_numbers = letters + number_chars
+
+        self.assertEqual(letters_numbers.parse("ab12"), ["a", "b", "1", "2"])
+
+    def test_add_unaddable_types(self):
+        """
+        The type system warns us this isn't possible:
+
+        `Operator "+" not supported for types "Parser[str]" and "Parser[int]"`
+        """
+        bad_parser = letter + regex(r"\d").map(int)
+
+        self.assertRaises(TypeError, bad_parser.parse, "a1")
 
     def test_multiply(self):
         self.assertEqual((letter * 3).parse("abc"), ["a", "b", "c"])
@@ -510,24 +567,24 @@ class TestParser(unittest.TestCase):
         self.assertEqual(pet.parse("dog"), Pet.DOG)
         self.assertRaises(ParseError, pet.parse, "foo")
 
-        def test_from_enum_int(self):
-            class Position(enum.Enum):
-                FIRST = 1
-                SECOND = 2
+    def test_from_enum_int(self):
+        class Position(enum.Enum):
+            FIRST = 1
+            SECOND = 2
 
-            position = from_enum(Position)
-            self.assertEqual(position.parse("1"), Position.FIRST)
-            self.assertEqual(position.parse("2"), Position.SECOND)
-            self.assertRaises(ParseError, position.parse, "foo")
+        position = from_enum(Position)
+        self.assertEqual(position.parse("1"), Position.FIRST)
+        self.assertEqual(position.parse("2"), Position.SECOND)
+        self.assertRaises(ParseError, position.parse, "foo")
 
-        def test_from_enum_transform(self):
-            class Pet(enum.Enum):
-                CAT = "cat"
-                DOG = "dog"
+    def test_from_enum_transform(self):
+        class Pet(enum.Enum):
+            CAT = "cat"
+            DOG = "dog"
 
-            pet = from_enum(Pet, transform=lambda s: s.lower())
-            self.assertEqual(pet.parse("cat"), Pet.CAT)
-            self.assertEqual(pet.parse("CAT"), Pet.CAT)
+        pet = from_enum(Pet, transform=lambda s: s.lower())
+        self.assertEqual(pet.parse("cat"), Pet.CAT)
+        self.assertEqual(pet.parse("CAT"), Pet.CAT)
 
 
 class TestUtils(unittest.TestCase):
