@@ -2,7 +2,7 @@
 import enum
 import re
 import unittest
-from typing import Any, Generator, List, Tuple, cast
+from typing import Any, Generator, Generic, List, Tuple, TypeVar, Union
 
 from parsy import (
     ParseError,
@@ -20,6 +20,7 @@ from parsy import (
     line_info_at,
     peek,
     regex,
+    seq,
     string,
     string_from,
 )
@@ -424,6 +425,34 @@ class TestParser(unittest.TestCase):
         bad_parser = letter + regex(r"\d").map(int)
 
         self.assertRaises(TypeError, bad_parser.parse, "a1")
+    
+    def test_add_numerics(self):
+        digit = regex(r"\d")
+        numeric_parser = digit.map(float) + digit.map(int)
+
+        self.assertEqual(numeric_parser.parse("12"), 3.0)
+
+    def test_seq(self):
+
+        a = regex("a")
+        b = regex("b")
+        num = regex(r"[\d]").map(int)
+
+        parser = seq(a, num, b, num, a|num)
+
+        self.assertEqual(parser.parse("a1b2a"), ("a", 1, "b", 2, "a"))
+        self.assertEqual(parser.parse("a1b23"), ("a", 1, "b", 2, 3))
+
+    def test_add_tuples_like_seq(self):
+        """A possible alternative to `seq`"""
+        a = regex("a").as_tuple()
+        b = regex("b").as_tuple()
+        num = regex(r"[\d]").map(int).as_tuple()
+
+        parser = a + num + b + num + (a | num)
+
+        self.assertEqual(parser.parse("a1b2a"), ("a", 1, "b", 2, "a"))
+        self.assertEqual(parser.parse("a1b23"), ("a", 1, "b", 2, 3))
 
     def test_multiply(self):
         self.assertEqual((letter * 3).parse("abc"), ["a", "b", "c"])
@@ -601,13 +630,13 @@ class TestUtils(unittest.TestCase):
 class TestForwardDeclaration(unittest.TestCase):
     def test_forward_declaration_1(self):
         # This is the example from the docs
+
         expr = forward_declaration()
         with self.assertRaises(ValueError):
             expr.parse("()")
 
         with self.assertRaises(ValueError):
             expr.parse_partial("()")
-
         simple = regex("[0-9]+").map(int)
         group = string("(") >> expr.sep_by(string(" ")) << string(")")
         expr.become(simple | group)

@@ -47,6 +47,13 @@ P = ParamSpec("P")
 T = TypeVar("T")
 T_co = TypeVar("T_co", covariant=True)
 
+_T_contra = TypeVar("_T_contra", contravariant=True)
+
+_T_co = TypeVar("_T_co", covariant=True)
+
+class SupportsAdd(Protocol[_T_contra, _T_co]):
+    def __add__(self, __x: _T_contra) -> _T_co: ...
+
 
 def noop(val: T) -> T:
     return val
@@ -125,20 +132,6 @@ class Result(Generic[OUT_co]):
             return Result(self.status, self.index, self.value, self.furthest, self.expected | other.expected)
         else:
             return Result(self.status, self.index, self.value, other.furthest, other.expected)
-
-
-class Addable(Protocol):
-    def __add__(__self: T, __other: T) -> T:
-        ...
-
-
-Tadd = TypeVar("Tadd", bound=Addable, covariant=True)
-
-
-# def xx(a: Tuple[Unpack[OUT_T]], b: Tuple[Unpack[OUT_T2]]) -> Tuple[Unpack[OUT_T], Unpack[OUT_T2]]:
-#     return a + b
-
-a = tuple("a")
 
 
 class Parser(Generic[OUT_co]):
@@ -330,8 +323,9 @@ class Parser(Generic[OUT_co]):
         return fail_parser
 
     # Special cases for adding tuples
-    # We have to unroll each number of elements of the second tuple because Pylance
-    # can only "Unpack" one tuple at a time
+    # We have to unroll each number of tuple elements for `other` because PEP-646
+    # only allows one "Unpack" in a Tuple (if we could have two, the return
+    # type could use two Unpacks
     @overload
     def __add__(self: Parser[Tuple[Unpack[OUT_T]]], other: Parser[Tuple[OUT1]]) -> Parser[Tuple[Unpack[OUT_T], OUT1]]:
         ...
@@ -361,28 +355,27 @@ class Parser(Generic[OUT_co]):
         ...
 
     # This covers tuples where `other` has more elements than the above overloads
-    # and all types are the same in `self` and `other`
+    # and the `self` and `other` tuples have the same homogeneous type
     @overload
     def __add__(
         self: Parser[Tuple[OUT, ...]], other: Parser[Tuple[OUT, ...]]
     ) -> Parser[Tuple[OUT, ...]]:
         ...
 
-    # Same as above, but for when all types are not the same
+    # Cover the rest of cases which can't return a homogeneous tuple
     @overload
     def __add__(
         self: Parser[Tuple[Any, ...]], other: Parser[Tuple[Any, ...]]
     ) -> Parser[Tuple[Any, ...]]:
         ...
 
-
-    # Type annotations for any addable types
+    # Addable parsers which return the same type
     @overload
-    def __add__(self: Parser[Tadd], other: Parser[Tadd]) -> Parser[Tadd]:
+    def __add__(self: Parser[SupportsAdd[Any, _T_co]], other: Parser[SupportsAdd[Any, _T_co]]) -> Parser[_T_co]:
         ...
 
     def __add__(self: Parser[Any], other: Parser[Any]) -> Parser[Any]:
-        return (self & other).combine(lambda first, second: first + second)
+        return (self & other).combine(operator.add)
 
     def __mul__(self: Parser[OUT], other: range | int) -> Parser[List[OUT]]:
         if isinstance(other, range):
@@ -748,7 +741,6 @@ def from_enum(enum_cls: type[E], transform: Callable[[str], str] = noop) -> Pars
 # examples/json.py. I think this is probably a recursive type issue which is probably
 # mirroring the recursive definition issues that forward_declaration is designed to solve.
 # Cutting the recursive knot might be harder at the type level?
-
 
 class forward_declaration(Parser[OUT]):
     """
