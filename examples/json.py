@@ -1,5 +1,6 @@
-from typing import TypeVar
-from parsy import Parser, forward_declaration, regex, string
+from typing import Dict, List, TypeVar, Union
+
+from parsy import Parser, ParserReference, generate, regex, string
 
 # Utilities
 whitespace = regex(r"\s*")
@@ -39,20 +40,27 @@ string_esc = string("\\") >> (
 quoted = lexeme(string('"') >> (string_part | string_esc).many().concat() << string('"'))
 
 # Data structures
-json_value = forward_declaration()
-object_pair = (quoted << colon) & json_value
-json_object = lbrace >> object_pair.sep_by(comma).map(dict) << rbrace
-array = lbrack >> json_value.sep_by(comma) << rbrack
+JSON = Union[Dict[str, "JSON"], List["JSON"], str, int, float, bool, None]
+
+
+@generate
+def _json_parser() -> ParserReference[JSON]:
+    return (yield json_parser)
+
+
+object_pair = (quoted << colon) & _json_parser
+json_object = lbrace >> object_pair.sep_by(comma).map(lambda a: {g[0]: g[1] for g in a}) << rbrace
+array = lbrack >> _json_parser.sep_by(comma) << rbrack
 
 # Everything
-json_value.become(quoted | number | json_object | array | true | false | null)
-json_doc = whitespace >> json_value
+json_parser = quoted | number | json_object | array | true | false | null
+
+json_doc = whitespace >> json_parser
 
 
 def test():
-    assert (
-        json_doc.parse(
-            r"""
+    result = json_doc.parse(
+        r"""
     {
         "int": 1,
         "string": "hello",
@@ -62,19 +70,18 @@ def test():
         "other": [true, false, null]
     }
 """
-        )
-        == {
-            "int": 1,
-            "string": "hello",
-            "a list": [1, 2, 3],
-            "escapes": "\n ⓒ",
-            "nested": {"x": "y"},
-            "other": [True, False, None],
-        }
     )
+    print(result)
+    assert result == {
+        "int": 1,
+        "string": "hello",
+        "a list": [1, 2, 3],
+        "escapes": "\n ⓒ",
+        "nested": {"x": "y"},
+        "other": [True, False, None],
+    }
 
 
 if __name__ == "__main__":
-    from sys import stdin
-
-    print(repr(json_doc.parse(stdin.read())))
+    test()
+    # print(repr(json_doc.parse(stdin.read())))

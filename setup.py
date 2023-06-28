@@ -42,4 +42,5 @@ setup(
     keywords="parser parsers parsing monad combinators",
     packages=find_packages("src"),
     package_dir={"": "src"},
+    install_requires=["typing-extensions"],
 )

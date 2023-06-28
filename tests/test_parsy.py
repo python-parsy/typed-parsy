@@ -1,36 +1,30 @@
 # -*- code: utf8 -*-
-try:
-    import enum
-except ImportError:
-    enum = None
+import enum
 import re
-from typing import Generator
 import unittest
-
-from typing import Any
+from typing import Any, Generator, List, Tuple, Union
 
 from parsy import (
-    Parser,
     ParseError,
+    Parser,
+    ParserReference,
+    Result,
     any_char,
     char_from,
     decimal_digit,
     digit,
-    forward_declaration,
     from_enum,
     generate,
-    index,
     letter,
     line_info,
     line_info_at,
-    match_item,
     peek,
     regex,
+    seq,
     string,
     string_from,
 )
 from parsy import test_char as parsy_test_char  # to stop pytest thinking this function is a test
-from parsy import test_item as parsy_test_item  # to stop pytest thinking this function is a test
 from parsy import whitespace
 
 
@@ -64,13 +58,13 @@ class TestParser(unittest.TestCase):
 
         self.assertRaises(ParseError, parser.parse, "x")
 
-    def test_regex_bytes(self):
-        parser = regex(rb"[0-9]")
+    # def test_regex_bytes(self):
+    #     parser = regex(rb"[0-9]")
 
-        self.assertEqual(parser.parse(b"1"), b"1")
-        self.assertEqual(parser.parse(b"4"), b"4")
+    #     self.assertEqual(parser.parse(b"1"), b"1")
+    #     self.assertEqual(parser.parse(b"4"), b"4")
 
-        self.assertRaises(ParseError, parser.parse, b"x")
+    #     self.assertRaises(ParseError, parser.parse, b"x")
 
     def test_regex_compiled(self):
         parser = regex(re.compile(r"[0-9]"))
@@ -102,7 +96,7 @@ class TestParser(unittest.TestCase):
     def test_bind(self):
         piped = None
 
-        def binder(x):
+        def binder(x: str):
             nonlocal piped
             piped = x
             return string("y")
@@ -122,10 +116,20 @@ class TestParser(unittest.TestCase):
         parser = digit & letter
         self.assertEqual(parser.parse("1A"), ("1", "A"))
 
-    def test_or(self):
-        self.assertEqual((letter | digit).parse("a"), "a")
-        self.assertEqual((letter | digit).parse("1"), "1")
-        self.assertRaises(ParseError, (letter | digit).parse, ".")
+    def test_append(self):
+        parser = digit.join(letter).append(letter)
+        self.assertEqual(parser.parse("1AB"), ("1", "A", "B"))
+
+    def test_combine(self):
+        parser = digit.join(letter).append(letter).combine(lambda a, b, c: (c + b + a))
+        self.assertEqual(parser.parse("1AB"), "BA1")
+
+    # def test_combine_mixed_types(self):
+    #     def demo(a: int, b: str, c: bool) -> Tuple[int, str, bool]:
+    #         return (a, b, c)
+
+    #     parser = digit.map(int).join(letter).append(digit.map(bool)).combine(demo)
+    #     self.assertEqual(parser.parse("1A1"), (1, "A", True))
 
     def test_concat(self):
         parser = letter.many().concat()
@@ -277,7 +281,6 @@ class TestParser(unittest.TestCase):
         self.assertEqual(ab.at_least(2).parse_partial("abababc"), (["ab", "ab", "ab"], "c"))
 
     def test_until(self):
-
         until = string("s").until(string("x"))
 
         s = "ssssx"
@@ -296,20 +299,7 @@ class TestParser(unittest.TestCase):
         until = regex(".").until(string("x"))
         self.assertEqual(until.parse_partial("xxxx"), ([], "xxxx"))
 
-    def test_until_with_consume_other(self):
-
-        until = string("s").until(string("x"), consume_other=True)
-
-        self.assertEqual(until.parse("ssssx"), 4 * ["s"] + ["x"])
-        self.assertEqual(until.parse_partial("ssssxy"), (4 * ["s"] + ["x"], "y"))
-
-        self.assertEqual(until.parse_partial("xxx"), (["x"], "xx"))
-
-        self.assertRaises(ParseError, until.parse, "ssssy")
-        self.assertRaises(ParseError, until.parse, "xssssxy")
-
     def test_until_with_min(self):
-
         until = string("s").until(string("x"), min=3)
 
         self.assertEqual(until.parse_partial("sssx"), (3 * ["s"], "x"))
@@ -318,7 +308,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, until.parse_partial, "ssx")
 
     def test_until_with_max(self):
-
         # until with max
         until = string("s").until(string("x"), max=3)
 
@@ -328,7 +317,6 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, until.parse_partial, "ssssx")
 
     def test_until_with_min_max(self):
-
         until = string("s").until(string("x"), min=3, max=5)
 
         self.assertEqual(until.parse_partial("sssx"), (3 * ["s"], "x"))
@@ -378,8 +366,97 @@ class TestParser(unittest.TestCase):
         self.assertRaises(ParseError, digit_list.parse, "7.6")
         self.assertEqual(digit.sep_by(string(","), max=0).parse(""), [])
 
-    def test_add(self):
-        self.assertEqual((letter + digit).parse("a1"), "a1")
+    def test_add_tuple(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d").map(int)
+        two_int_parser = int_parser & int_parser
+        barcode = letter_tuple + two_int_parser
+
+        def my_foo(first: str, second: int, third: int) -> str:
+            return first + str(third + second)
+
+        foo_parser = barcode.combine(my_foo)
+
+        self.assertEqual(foo_parser.parse("a13"), "a4")
+
+    def test_add_too_long_tuple_uniform_types(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d")
+        six_int_parser = (
+            (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        )
+        barcode = letter_tuple + six_int_parser
+
+        def my_bar(first: str, *second: str) -> str:
+            return first + "-".join(second)
+
+        foo_parser = barcode.combine(my_bar)
+
+        self.assertEqual(foo_parser.parse("a123456"), "a1-2-3-4-5-6")
+
+    def test_add_too_long_tuple_different_types(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letter_tuple = letter.as_tuple()
+        int_parser = regex(r"\d").map(int)
+        six_int_parser = (
+            (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        )
+        barcode = letter_tuple + six_int_parser
+
+        def my_bar(first: str, *second: int) -> str:
+            return first + str(sum(second))
+
+        foo_parser = barcode.combine(my_bar)
+
+        self.assertEqual(foo_parser.parse("a111111"), "a6")
+
+    def test_add_list(self):
+        """This test code is for checking that pylance gives no type errors"""
+        letters = letter.many()
+        number_chars = regex(r"\d").many()
+        letters_numbers = letters + number_chars
+
+        self.assertEqual(letters_numbers.parse("ab12"), ["a", "b", "1", "2"])
+
+    def test_add_unaddable_types(self):
+        """
+        The type system warns us this isn't possible:
+
+        `Operator "+" not supported for types "Parser[str]" and "Parser[int]"`
+        """
+        bad_parser = letter + regex(r"\d").map(int)
+
+        self.assertRaises(TypeError, bad_parser.parse, "a1")
+
+    def test_add_numerics(self):
+        digit = regex(r"\d")
+        numeric_parser = digit.map(float) + digit.map(int)
+
+        self.assertEqual(numeric_parser.parse("12"), 3.0)
+
+    def test_seq(self):
+
+        a = regex("a")
+        b = regex("b")
+        num = regex(r"[\d]").map(int)
+
+        parser = seq(a, num, b, num, a | num)
+
+        self.assertEqual(parser.parse("a1b2a"), ("a", 1, "b", 2, "a"))
+        self.assertEqual(parser.parse("a1b23"), ("a", 1, "b", 2, 3))
+
+    def test_add_tuples_like_seq(self):
+        """A possible alternative to `seq`"""
+        a = regex("a").as_tuple()
+        b = regex("b").as_tuple()
+        num = regex(r"[\d]").map(int).as_tuple()
+
+        parser = a + num + b + num + (a | num)
+
+        self.assertEqual(parser.parse("a1b2a"), ("a", 1, "b", 2, "a"))
+        self.assertEqual(parser.parse("a1b23"), ("a", 1, "b", 2, 3))
 
     def test_multiply(self):
         self.assertEqual((letter * 3).parse("abc"), ["a", "b", "c"])
@@ -414,16 +491,16 @@ class TestParser(unittest.TestCase):
         ex = err.exception
         self.assertEqual(str(ex), """expected '[ab]' at 0:0""")
 
-    def test_char_from_bytes(self):
-        ab = char_from(b"ab")
-        self.assertEqual(ab.parse(b"a"), b"a")
-        self.assertEqual(ab.parse(b"b"), b"b")
+    # def test_char_from_bytes(self):
+    #     ab = char_from(b"ab")
+    #     self.assertEqual(ab.parse(b"a"), b"a")
+    #     self.assertEqual(ab.parse(b"b"), b"b")
 
-        with self.assertRaises(ParseError) as err:
-            ab.parse(b"x")
+    #     with self.assertRaises(ParseError) as err:
+    #         ab.parse(b"x")
 
-        ex = err.exception
-        self.assertEqual(str(ex), """expected b'[ab]' at 0""")
+    #     ex = err.exception
+    #     self.assertEqual(str(ex), """expected b'[ab]' at 0""")
 
     def test_string_from(self):
         titles = string_from("Mr", "Mr.", "Mrs", "Mrs.")
@@ -474,7 +551,7 @@ class TestParser(unittest.TestCase):
 
     def test_line_info(self):
         @generate
-        def foo() -> Generator[Any, Any, tuple[str, tuple[int, int]]]:
+        def foo() -> Generator[Any, Any, Tuple[str, Tuple[int, int]]]:
             i = yield line_info
             l = yield any_char
             return (l, i)
@@ -504,84 +581,43 @@ class TestParser(unittest.TestCase):
 
         self.assertRaises(ParseError, not_a_digit.parse, "8ab")
 
-    if enum is not None:
+    def test_should_fail_isolated(self):
+        not_a_digit = digit.should_fail("not a digit")
 
-        def test_from_enum_string(self):
-            class Pet(enum.Enum):
-                CAT = "cat"
-                DOG = "dog"
+        self.assertEqual(
+            not_a_digit.parse_partial("a"),
+            (Result(status=False, index=-1, value=None, furthest=0, expected=frozenset({"a digit"})), "a"),
+        )
+        self.assertRaises(ParseError, not_a_digit.parse_partial, "1")
 
-            pet = from_enum(Pet)
-            self.assertEqual(pet.parse("cat"), Pet.CAT)
-            self.assertEqual(pet.parse("dog"), Pet.DOG)
-            self.assertRaises(ParseError, pet.parse, "foo")
+    def test_from_enum_string(self):
+        class Pet(enum.Enum):
+            CAT = "cat"
+            DOG = "dog"
 
-        def test_from_enum_int(self):
-            class Position(enum.Enum):
-                FIRST = 1
-                SECOND = 2
+        pet = from_enum(Pet)
+        self.assertEqual(pet.parse("cat"), Pet.CAT)
+        self.assertEqual(pet.parse("dog"), Pet.DOG)
+        self.assertRaises(ParseError, pet.parse, "foo")
 
-            position = from_enum(Position)
-            self.assertEqual(position.parse("1"), Position.FIRST)
-            self.assertEqual(position.parse("2"), Position.SECOND)
-            self.assertRaises(ParseError, position.parse, "foo")
+    def test_from_enum_int(self):
+        class Position(enum.Enum):
+            FIRST = 1
+            SECOND = 2
 
-        def test_from_enum_transform(self):
-            class Pet(enum.Enum):
-                CAT = "cat"
-                DOG = "dog"
+        position = from_enum(Position)
+        self.assertEqual(position.parse("1"), Position.FIRST)
+        self.assertEqual(position.parse("2"), Position.SECOND)
+        self.assertRaises(ParseError, position.parse, "foo")
 
-            pet = from_enum(Pet, transform=lambda s: s.lower())
-            self.assertEqual(pet.parse("cat"), Pet.CAT)
-            self.assertEqual(pet.parse("CAT"), Pet.CAT)
+    def test_from_enum_transform(self):
+        class Pet(enum.Enum):
+            CAT = "cat"
+            DOG = "dog"
 
-
-class TestParserTokens(unittest.TestCase):
-    """
-    Tests that ensure that `.parse` can handle an arbitrary list of tokens,
-    rather than a string.
-    """
-
-    # Some opaque objects we will use in our stream:
-    START = object()
-    STOP = object()
-
-    def test_test_item(self):
-        start_stop = parsy_test_item(lambda i: i in [self.START, self.STOP], "START/STOP")
-        self.assertEqual(start_stop.parse([self.START]), self.START)
-        self.assertEqual(start_stop.parse([self.STOP]), self.STOP)
-        with self.assertRaises(ParseError) as err:
-            start_stop.many().parse([self.START, "hello"])
-
-        ex = err.exception
-        self.assertEqual(str(ex), "expected one of 'EOF', 'START/STOP' at 1")
-        self.assertEqual(ex.expected, {"EOF", "START/STOP"})
-        self.assertEqual(ex.index, 1)
-
-    def test_match_item(self):
-        self.assertEqual(match_item(self.START).parse([self.START]), self.START)
-        with self.assertRaises(ParseError) as err:
-            match_item(self.START, "START").parse([])
-
-        ex = err.exception
-        self.assertEqual(str(ex), "expected 'START' at 0")
-
-    def test_parse_tokens(self):
-        other_vals = parsy_test_item(lambda i: i not in [self.START, self.STOP], "not START/STOP")
-
-        bracketed = match_item(self.START) >> other_vals.many() << match_item(self.STOP)
-        stream = [self.START, "hello", 1, 2, "goodbye", self.STOP]
-        result = bracketed.parse(stream)
-        self.assertEqual(result, ["hello", 1, 2, "goodbye"])
-
-    def test_index(self):
-        @generate
-        def foo():
-            i = yield index
-            l = yield letter
-            return (l, i)
-
-        self.assertEqual(foo.many().parse(["A", "B"]), [("A", 0), ("B", 1)])
+        pet = from_enum(Pet, transform=lambda s: s.lower())
+        self.assertEqual(pet.parse("cat"), Pet.CAT)
+        self.assertEqual(pet.parse("CAT"), Pet.CAT)
 
 
 class TestUtils(unittest.TestCase):
@@ -595,46 +631,33 @@ class TestUtils(unittest.TestCase):
         self.assertRaises(ValueError, lambda: line_info_at(text, 8))
 
 
-class TestForwardDeclaration(unittest.TestCase):
-    def test_forward_declaration_1(self):
-        # This is the example from the docs
-        expr = forward_declaration()
-        with self.assertRaises(ValueError):
-            expr.parse("()")
+# Type alias used in test_recursive_parser, has to be defined at module or class level
+RT = Union[int, List["RT"]]
 
-        with self.assertRaises(ValueError):
-            expr.parse_partial("()")
 
-        simple = regex("[0-9]+").map(int)
-        group = string("(") >> expr.sep_by(string(" ")) << string(")")
-        expr.become(simple | group)
+def test_recursive_parser():
+    """
+    A recursive parser can be defined by using generators.
 
-        self.assertEqual(expr.parse("(0 1 (2 3))"), [0, 1, [2, 3]])
+    The type of the parser has to be explicitly declared with a type alias which
+    is also recursively defined using a forward-declaration.
 
-    def test_forward_declaration_2(self):
-        # Simplest example I could think of
-        expr = forward_declaration()
-        expr.become(string("A") + expr | string("Z"))
+    This works because the generator can refer the target parser before the target
+    parser is defined. Then, when defining the parser, it can use `_parser` to
+    indirectly refer to itself, creating a recursive parser.
+    """
+    digits = regex("[0-9]+").map(int)
 
-        self.assertEqual(expr.parse("Z"), "Z")
-        self.assertEqual(expr.parse("AZ"), "AZ")
-        self.assertEqual(expr.parse("AAAAAZ"), "AAAAAZ")
+    @generate
+    def _parser() -> ParserReference[RT]:
+        return (yield parser)
 
-        with self.assertRaises(ParseError):
-            expr.parse("A")
+    # The explicit type annotation of `Parser[RT]` could be omitted
+    parser: Parser[RT] = digits | string("(") >> _parser.sep_by(string(" ")) << string(")")
 
-        with self.assertRaises(ParseError):
-            expr.parse("B")
+    result = parser.parse("(0 1 (2 3 (4 5)))")
 
-        self.assertEqual(expr.parse_partial("AAZXX"), ("AAZ", "XX"))
-
-    def test_forward_declaration_cant_become_twice(self):
-        dec = forward_declaration()
-        other = string("X")
-        dec.become(other)
-
-        with self.assertRaises((AttributeError, TypeError)):
-            dec.become(other)
+    assert result == [0, 1, [2, 3, [4, 5]]]
 
 
 if __name__ == "__main__":

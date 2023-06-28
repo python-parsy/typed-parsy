@@ -13,10 +13,12 @@ incompatible** version of parsy that has strong type guarantees, with no
 This means removing anything that cannot be typed fully, and providing
 alternatives. Main changes:
 
-* Removed ``seq``, and replaced it with ``&`` operator support which returns a 2-tuple
+* Removed ``seq``, and replaced it with ``join`` which creates a 2-tuple result, and
+  ``append`` which takes an ``n``-tuple result and adds the result of another parser to
+  the end, producing an ``n+1``-tuple result.
 * Removed ``alt`` - you can use only ``|`` operator.
-* Removed ``.combine`` and ``.combine_dict`` - you have to use ``.map`` instead,
-  which is type-safe but much trickier, especially once you have nested tuples.
+* Removed ``.combine_dict`` - you have to use ``.map`` or ``.combine`` instead,
+  which is type-safe but loses the benefit of keyword sequence parsers.
 
 The docs have not been updated, you’ll need to look at the source code
 if you are interested.
