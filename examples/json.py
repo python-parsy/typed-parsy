@@ -1,6 +1,6 @@
-from typing import TypeVar
+from typing import Dict, List, TypeVar, Union
 
-from parsy import Parser, forward_declaration, regex, string
+from parsy import Parser, ParserReference, generate, regex, string
 
 # Utilities
 whitespace = regex(r"\s*")
@@ -40,19 +40,22 @@ string_esc = string("\\") >> (
 quoted = lexeme(string('"') >> (string_part | string_esc).many().concat() << string('"'))
 
 # Data structures
-JSON = TypeVar("JSON")
+JSON = Union[Dict[str, "JSON"], List["JSON"], str, int, float, bool, None]
 
-json_value = forward_declaration[JSON]()
-object_pair = (quoted << colon) & json_value
+
+@generate
+def _json_parser() -> ParserReference[JSON]:
+    return (yield json_parser)
+
+
+object_pair = (quoted << colon) & _json_parser
 json_object = lbrace >> object_pair.sep_by(comma).map(lambda a: {g[0]: g[1] for g in a}) << rbrace
-array = lbrack >> json_value.sep_by(comma) << rbrack
+array = lbrack >> _json_parser.sep_by(comma) << rbrack
 
 # Everything
-all = quoted | number | json_object | array | true | false | null
-json_value = json_value.become(all)
-json_doc = whitespace >> json_value
+json_parser = quoted | number | json_object | array | true | false | null
 
-# JSON = Union[Dict[str, JSON], List[JSON], str, int, float, bool, None]
+json_doc = whitespace >> json_parser
 
 
 def test():

@@ -9,9 +9,8 @@ etc.
 """
 
 from dataclasses import dataclass
-from typing import List
 
-from parsy import Parser, dataparser, eof, parse_field, regex, string, string_from, whitespace
+from parsy import dataclass_parser, eof, parser_field, regex, string, string_from, whitespace
 
 command = string_from("fd", "bk", "rt", "lt")
 number = regex(r"[0-9]+").map(int)
@@ -39,11 +38,11 @@ Alternative which creates a more structured output
 
 @dataclass
 class Instruction:
-    command: str = parse_field(optional_whitespace >> command)
-    distance: int = parse_field(whitespace >> number << (eof | eol | (whitespace >> eol)))
+    command: str = parser_field(optional_whitespace >> command)
+    distance: int = parser_field(whitespace >> number << (eof | eol | (whitespace >> eol)))
 
 
-instruction_parser = dataparser(Instruction).many()
+instruction_parser = dataclass_parser(Instruction).many()
 
 assert (
     instruction_parser.parse(

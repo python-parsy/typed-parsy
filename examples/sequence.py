@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 from parsy import regex, seq, whitespace
 
 
@@ -14,7 +13,7 @@ class Person:
 person_arg_sequence = seq(
     regex(r"\w+"),
     whitespace >> regex(r"\d+").map(int),
-    whitespace >> regex(r".+"),
+    whitespace.then(regex(r".+")),
 )
 person_parser = person_arg_sequence.combine(Person)
 

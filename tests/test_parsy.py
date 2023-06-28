@@ -2,17 +2,17 @@
 import enum
 import re
 import unittest
-from typing import Any, Generator, Generic, List, Tuple, TypeVar, Union
+from typing import Any, Generator, List, Tuple, Union
 
 from parsy import (
     ParseError,
     Parser,
+    ParserReference,
     Result,
     any_char,
     char_from,
     decimal_digit,
     digit,
-    forward_declaration,
     from_enum,
     generate,
     letter,
@@ -384,7 +384,9 @@ class TestParser(unittest.TestCase):
         """This test code is for checking that pylance gives no type errors"""
         letter_tuple = letter.as_tuple()
         int_parser = regex(r"\d")
-        six_int_parser = (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        six_int_parser = (
+            (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        )
         barcode = letter_tuple + six_int_parser
 
         def my_bar(first: str, *second: str) -> str:
@@ -398,7 +400,9 @@ class TestParser(unittest.TestCase):
         """This test code is for checking that pylance gives no type errors"""
         letter_tuple = letter.as_tuple()
         int_parser = regex(r"\d").map(int)
-        six_int_parser = (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        six_int_parser = (
+            (int_parser & int_parser).append(int_parser).append(int_parser).append(int_parser).append(int_parser)
+        )
         barcode = letter_tuple + six_int_parser
 
         def my_bar(first: str, *second: int) -> str:
@@ -425,7 +429,7 @@ class TestParser(unittest.TestCase):
         bad_parser = letter + regex(r"\d").map(int)
 
         self.assertRaises(TypeError, bad_parser.parse, "a1")
-    
+
     def test_add_numerics(self):
         digit = regex(r"\d")
         numeric_parser = digit.map(float) + digit.map(int)
@@ -438,7 +442,7 @@ class TestParser(unittest.TestCase):
         b = regex("b")
         num = regex(r"[\d]").map(int)
 
-        parser = seq(a, num, b, num, a|num)
+        parser = seq(a, num, b, num, a | num)
 
         self.assertEqual(parser.parse("a1b2a"), ("a", 1, "b", 2, "a"))
         self.assertEqual(parser.parse("a1b23"), ("a", 1, "b", 2, 3))
@@ -627,46 +631,33 @@ class TestUtils(unittest.TestCase):
         self.assertRaises(ValueError, lambda: line_info_at(text, 8))
 
 
-class TestForwardDeclaration(unittest.TestCase):
-    def test_forward_declaration_1(self):
-        # This is the example from the docs
+# Type alias used in test_recursive_parser, has to be defined at module or class level
+RT = Union[int, List["RT"]]
 
-        expr = forward_declaration()
-        with self.assertRaises(ValueError):
-            expr.parse("()")
 
-        with self.assertRaises(ValueError):
-            expr.parse_partial("()")
-        simple = regex("[0-9]+").map(int)
-        group = string("(") >> expr.sep_by(string(" ")) << string(")")
-        expr.become(simple | group)
+def test_recursive_parser():
+    """
+    A recursive parser can be defined by using generators.
 
-        self.assertEqual(expr.parse("(0 1 (2 3))"), [0, 1, [2, 3]])
+    The type of the parser has to be explicitly declared with a type alias which
+    is also recursively defined using a forward-declaration.
 
-    def test_forward_declaration_2(self):
-        # Simplest example I could think of
-        expr = forward_declaration()
-        expr.become(string("A") + expr | string("Z"))
+    This works because the generator can refer the target parser before the target
+    parser is defined. Then, when defining the parser, it can use `_parser` to
+    indirectly refer to itself, creating a recursive parser.
+    """
+    digits = regex("[0-9]+").map(int)
 
-        self.assertEqual(expr.parse("Z"), "Z")
-        self.assertEqual(expr.parse("AZ"), "AZ")
-        self.assertEqual(expr.parse("AAAAAZ"), "AAAAAZ")
+    @generate
+    def _parser() -> ParserReference[RT]:
+        return (yield parser)
 
-        with self.assertRaises(ParseError):
-            expr.parse("A")
+    # The explicit type annotation of `Parser[RT]` could be omitted
+    parser: Parser[RT] = digits | string("(") >> _parser.sep_by(string(" ")) << string(")")
 
-        with self.assertRaises(ParseError):
-            expr.parse("B")
+    result = parser.parse("(0 1 (2 3 (4 5)))")
 
-        self.assertEqual(expr.parse_partial("AAZXX"), ("AAZ", "XX"))
-
-    def test_forward_declaration_cant_become_twice(self):
-        dec = forward_declaration()
-        other = string("X")
-        dec.become(other)
-
-        with self.assertRaises((AttributeError, TypeError)):
-            dec.become(other)
+    assert result == [0, 1, [2, 3, [4, 5]]]
 
 
 if __name__ == "__main__":

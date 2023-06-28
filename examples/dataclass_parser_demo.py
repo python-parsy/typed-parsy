@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List
 
-from parsy import dataparser, parse_field, regex, string
+from parsy import dataclass_parser, parser_field, regex, string
 
 text = """Sample text
 
@@ -64,14 +64,14 @@ any_text = regex(r"[^\n]+")
 
 @dataclass
 class Student:
-    number: int = parse_field(integer << string(", "))
-    name: str = parse_field(any_text << string("\n"))
+    number: int = parser_field(integer << string(", "))
+    name: str = parser_field(any_text << string("\n"))
 
 
 @dataclass
 class Score:
-    number: int = parse_field(integer << string(", "))
-    score: int = parse_field(integer << string("\n"))
+    number: int = parser_field(integer << string(", "))
+    score: int = parser_field(integer << string("\n"))
 
 
 @dataclass
@@ -83,11 +83,13 @@ class StudentWithScore:
 
 @dataclass
 class Grade:
-    grade: int = parse_field(string("Grade = ") >> integer << string("\n"))
-    students: List[Student] = parse_field(
-        string("Student number, Name\n") >> dataparser(Student).many() << regex(r"\n*")
+    grade: int = parser_field(string("Grade = ") >> integer << string("\n"))
+    students: List[Student] = parser_field(
+        string("Student number, Name\n") >> dataclass_parser(Student).many() << regex(r"\n*")
     )
-    scores: List[Score] = parse_field(string("Student number, Score\n") >> dataparser(Score).many() << regex(r"\n*"))
+    scores: List[Score] = parser_field(
+        string("Student number, Score\n") >> dataclass_parser(Score).many() << regex(r"\n*")
+    )
 
     @property
     def students_with_scores(self) -> List[StudentWithScore]:
@@ -97,16 +99,16 @@ class Grade:
 
 @dataclass
 class School:
-    name: str = parse_field(string("School = ") >> any_text << string("\n"))
-    grades: List[Grade] = parse_field(dataparser(Grade).many())
+    name: str = parser_field(string("School = ") >> any_text << string("\n"))
+    grades: List[Grade] = parser_field(dataclass_parser(Grade).many())
 
 
 @dataclass
 class File:
-    header: str = parse_field(regex(r"[\s\S]*?(?=School =)"))
-    schools: List[School] = parse_field(dataparser(School).many())
+    header: str = parser_field(regex(r"[\s\S]*?(?=School =)"))
+    schools: List[School] = parser_field(dataclass_parser(School).many())
 
 
 if __name__ == "__main__":
-    file = dataparser(File).parse(text)
+    file = dataclass_parser(File).parse(text)
     print(file.schools)

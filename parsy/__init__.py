@@ -51,8 +51,10 @@ _T_contra = TypeVar("_T_contra", contravariant=True)
 
 _T_co = TypeVar("_T_co", covariant=True)
 
+
 class SupportsAdd(Protocol[_T_contra, _T_co]):
-    def __add__(self, __x: _T_contra) -> _T_co: ...
+    def __add__(self, __x: _T_contra) -> _T_co:
+        ...
 
 
 def noop(val: T) -> T:
@@ -235,15 +237,7 @@ class Parser(Generic[OUT_co]):
     def at_least(self: Parser[OUT_co], n: int) -> Parser[List[OUT_co]]:
         return self.times(min=n, max=float("inf"))
 
-    @overload
-    def optional(self: Parser[OUT1], default: None = None) -> Parser[OUT1 | None]:
-        pass
-
-    @overload
-    def optional(self: Parser[OUT1], default: OUT2) -> Parser[OUT1 | OUT2]:
-        pass
-
-    def optional(self: Parser[OUT1], default: OUT2 | None = None) -> Parser[OUT1 | OUT2 | None]:
+    def optional(self: Parser[OUT1], default: OUT2 = None) -> Parser[OUT1 | OUT2]:
         return self.times(0, 1).map(lambda v: v[0] if v else default)
 
     def until(
@@ -357,16 +351,12 @@ class Parser(Generic[OUT_co]):
     # This covers tuples where `other` has more elements than the above overloads
     # and the `self` and `other` tuples have the same homogeneous type
     @overload
-    def __add__(
-        self: Parser[Tuple[OUT, ...]], other: Parser[Tuple[OUT, ...]]
-    ) -> Parser[Tuple[OUT, ...]]:
+    def __add__(self: Parser[Tuple[OUT, ...]], other: Parser[Tuple[OUT, ...]]) -> Parser[Tuple[OUT, ...]]:
         ...
 
     # Cover the rest of cases which can't return a homogeneous tuple
     @overload
-    def __add__(
-        self: Parser[Tuple[Any, ...]], other: Parser[Tuple[Any, ...]]
-    ) -> Parser[Tuple[Any, ...]]:
+    def __add__(self: Parser[Tuple[Any, ...]], other: Parser[Tuple[Any, ...]]) -> Parser[Tuple[Any, ...]]:
         ...
 
     # Addable parsers which return the same type
@@ -480,6 +470,10 @@ def generate(fn: Callable[[], Generator[Parser[Any], Any, OUT]]) -> Parser[OUT]:
             return Result.success(index, returnVal).aggregate(result)
 
     return generated
+
+
+# A convenience type for defining forward references to parsers using a generator
+ParserReference = Generator[Parser[T], T, T]
 
 
 index = Parser(lambda _, index: Result.success(index, index))
@@ -607,54 +601,60 @@ def regex(
 # Each number of args needs to be typed separately
 @overload
 def seq(
-    __arg1: Parser[OUT1],
-    __arg2: Parser[OUT2],
-    __arg3: Parser[OUT3],
-    __arg4: Parser[OUT4],
-    __arg5: Parser[OUT5],
-    __arg6: Parser[OUT6],
+    __parser_1: Parser[OUT1],
+    __parser_2: Parser[OUT2],
+    __parser_3: Parser[OUT3],
+    __parser_4: Parser[OUT4],
+    __parser_5: Parser[OUT5],
+    __parser_6: Parser[OUT6],
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5, OUT6]]:
     ...
 
 
 @overload
 def seq(
-    __arg1: Parser[OUT1], __arg2: Parser[OUT2], __arg3: Parser[OUT3], __arg4: Parser[OUT4], __arg5: Parser[OUT5]
+    __parser_1: Parser[OUT1],
+    __parser_2: Parser[OUT2],
+    __parser_3: Parser[OUT3],
+    __parser_4: Parser[OUT4],
+    __parser_5: Parser[OUT5],
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4, OUT5]]:
     ...
 
 
 @overload
 def seq(
-    __arg1: Parser[OUT1], __arg2: Parser[OUT2], __arg3: Parser[OUT3], __arg4: Parser[OUT4]
+    __parser_1: Parser[OUT1], __parser_2: Parser[OUT2], __parser_3: Parser[OUT3], __parser_4: Parser[OUT4]
 ) -> Parser[Tuple[OUT1, OUT2, OUT3, OUT4]]:
     ...
 
 
 @overload
-def seq(__arg1: Parser[OUT1], __arg2: Parser[OUT2], __arg3: Parser[OUT3]) -> Parser[Tuple[OUT1, OUT2, OUT3]]:
+def seq(
+    __parser_1: Parser[OUT1], __parser_2: Parser[OUT2], __parser_3: Parser[OUT3]
+) -> Parser[Tuple[OUT1, OUT2, OUT3]]:
     ...
 
 
 @overload
-def seq(__arg1: Parser[OUT1], __arg2: Parser[OUT2]) -> Parser[Tuple[OUT1, OUT2]]:
+def seq(__parser_1: Parser[OUT1], __parser_2: Parser[OUT2]) -> Parser[Tuple[OUT1, OUT2]]:
     ...
 
 
 @overload
-def seq(__arg1: Parser[OUT1]) -> Parser[Tuple[OUT1]]:
+def seq(__parser_1: Parser[OUT1]) -> Parser[Tuple[OUT1]]:
     ...
 
 
 @overload
-def seq(*args: Parser[Any]) -> Parser[Tuple[Any, ...]]:
+def seq(*parsers: Parser[Any]) -> Parser[Tuple[Any, ...]]:
     ...
 
 
-def seq(*args: Parser[Any]) -> Parser[Tuple[Any, ...]]:
-    if not args:
+def seq(*parsers: Parser[Any]) -> Parser[Tuple[Any, ...]]:
+    if not parsers:
         raise ValueError()
-    first, *remainder = args
+    first, *remainder = parsers
     parser = first.as_tuple()
     for p in remainder:
         parser = parser.append(p)  # type: ignore
@@ -737,39 +737,10 @@ def from_enum(enum_cls: type[E], transform: Callable[[str], str] = noop) -> Pars
     return reduce(operator.or_, [string(value, transform=transform).result(enum_item) for value, enum_item in items])
 
 
-# TODO how do we type a forward_declaration instance? For a typical usage, see
-# examples/json.py. I think this is probably a recursive type issue which is probably
-# mirroring the recursive definition issues that forward_declaration is designed to solve.
-# Cutting the recursive knot might be harder at the type level?
-
-class forward_declaration(Parser[OUT]):
-    """
-    An empty parser that can be used as a forward declaration,
-    especially for parsers that need to be defined recursively.
-
-    You must use `.become(parser)` before using.
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    def _raise_error(self, *args: Any, **kwargs: Any) -> Any:
-        raise ValueError("You must use 'become' before attempting to call `parse` or `parse_partial`")
-
-    parse = _raise_error
-    parse_partial = _raise_error
-
-    def become(self, other: Parser[OUT2]) -> Parser[OUT2]:
-        self.__dict__ = other.__dict__
-        self.__class__ = other.__class__
-        self = cast(Parser[OUT2], self)
-        return self
-
-
 # Dataclass parsers
 
 
-def parse_field(
+def parser_field(
     parser: Parser[OUT],
     *,
     default: OUT = ...,
@@ -788,27 +759,26 @@ def parse_field(
 
 class DataClassProtocol(Protocol):
     __dataclass_fields__: ClassVar[Dict[str, Field[Any]]]
-    __init__: Callable[..., Any]
+    __init__: Callable[..., None]
 
 
 OUT_D = TypeVar("OUT_D", bound=DataClassProtocol)
 
 
-def dataparser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
+def dataclass_parser(datatype: Type[OUT_D]) -> Parser[OUT_D]:
     @Parser
     def data_parser(stream: str, index: int) -> Result[OUT_D]:
         parsed_fields: Dict[str, Any] = {}
-        result = Result.success(index, None)
-        for field in fields(datatype):
-            if "parser" not in field.metadata:
+        for dataclass_field in fields(datatype):
+            if "parser" not in dataclass_field.metadata:
                 continue
-            parser: Parser[Any] = field.metadata["parser"]
+            parser: Parser[Any] = dataclass_field.metadata["parser"]
             result = parser(stream, index)
             if not result.status:
                 return result  # type: ignore
             index = result.index
-            parsed_fields[field.name] = result.value
+            parsed_fields[dataclass_field.name] = result.value
 
-        return Result.success(result.index, datatype(**parsed_fields))
+        return Result.success(index, datatype(**parsed_fields))
 
     return data_parser
