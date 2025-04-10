@@ -21,6 +21,9 @@ alternatives. Main changes:
 The docs have not been updated, you’ll need to look at the source code
 if you are interested.
 
+See `my blog post <https://lukeplant.me.uk/blog/posts/python-type-hints-parsy-case-study/>`_ 
+for the background to this. The current status of this code is **abandoned**,
+but I am open to someone else taking it on if they have serious plans.
 
 ----
 
