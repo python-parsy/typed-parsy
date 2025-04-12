@@ -8,14 +8,16 @@ Stripped down logo lexer, for tokenizing Turtle Logo programs like:
 etc.
 """
 
-from parsy import eof, regex, string, string_from, whitespace, Parser
+from dataclasses import dataclass
+
+from parsy import dataclass_parser, eof, parser_field, regex, string, string_from, whitespace
 
 command = string_from("fd", "bk", "rt", "lt")
 number = regex(r"[0-9]+").map(int)
 optional_whitespace = regex(r"\s*")
 eol = string("\n")
-line = (optional_whitespace >> command) & (whitespace >> number) & (eof | eol | (whitespace >> eol)).result("\n")
-lexer: Parser[list[object]] = line.many().map(lambda lines: sum(([t0, t1, t2] for ((t0, t1), t2) in lines), []))
+line = (optional_whitespace >> command).join(whitespace >> number) << (eof | eol | (whitespace >> eol))
+lexer = line.many()
 
 
 def test_lexer() -> None:
@@ -25,5 +27,28 @@ def test_lexer() -> None:
 bk 2
 """
         )
-        == ["fd", 1, "\n", "bk", 2, "\n"]
+        == [("fd", 1), ("bk", 2)]
     )
+
+
+"""
+Alternative which creates a more structured output
+"""
+
+
+@dataclass
+class Instruction:
+    command: str = parser_field(optional_whitespace >> command)
+    distance: int = parser_field(whitespace >> number << (eof | eol | (whitespace >> eol)))
+
+
+instruction_parser = dataclass_parser(Instruction).many()
+
+assert (
+    instruction_parser.parse(
+        """fd 1
+bk 2
+"""
+    )
+    == [Instruction("fd", 1), Instruction("bk", 2)]
+)

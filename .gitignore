@@ -5,3 +5,7 @@
 src/parsy.egg-info
 docs/_build
 .cache
+__pycache__
+.python-version
+.venv
+.vscode

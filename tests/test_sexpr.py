@@ -1,13 +1,18 @@
-import re
 import unittest
+from typing import List, TypeVar, Union
 
-from parsy import generate, regex, string
+from parsy import Parser, ParserReference, generate, regex, string
 
-whitespace = regex(r"\s+", re.MULTILINE)
+whitespace = regex(r"\s+")
 comment = regex(r";.*")
 ignore = (whitespace | comment).many()
 
-lexeme = lambda p: p << ignore
+T = TypeVar("T")
+
+
+def lexeme(parser: Parser[T]) -> Parser[T]:
+    return parser << ignore
+
 
 lparen = lexeme(string("("))
 rparen = lexeme(string(")"))
@@ -18,22 +23,21 @@ false = lexeme(string("#f")).result(False)
 
 atom = true | false | number | symbol
 
-
-@generate
-def form():
-    yield lparen
-    els = yield expr.many()
-    yield rparen
-    return els
+PT = Union[str, bool, int, List["PT"]]
 
 
 @generate
-def quote():
-    yield string("'")
-    e = yield expr
-    return ["quote", e]
+def _expr() -> ParserReference[PT]:
+    # expr is referred to before it's defined
+    return (yield expr)
 
 
+# expr is indirectly used via _expr
+form = lparen >> _expr.many() << rparen
+quote = string("'") >> _expr.map(lambda e: ["quote", e])
+
+# Here, expr is finally defined, combining parsers which already refer to it via
+# _expr, which creates a recursive parser
 expr = form | quote | atom
 program = ignore >> expr.many()
 
